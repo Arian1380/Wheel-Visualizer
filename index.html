@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Radial Symmetry Wheel Visualizer</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-main: #f0f5fa;
+      --panel-bg: rgba(255, 255, 255, 0.75);
+      --accent: #00818a;
+      --accent-soft: rgba(0, 129, 138, 0.1);
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --border: rgba(0, 0, 0, 0.08);
+      --glass: backdrop-filter: blur(12px) saturate(160%);
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg-main);
+      font-family: 'Michroma', 'Outfit', sans-serif;
+      overflow: hidden;
+      color: var(--text-main);
+    }
+
+    h1, h2, h3, .badge, .title-font {
+      font-family: 'Panchang', 'Outfit', sans-serif;
+      font-weight: 700;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.1);
+      border-radius: 10px;
+    }
+
+    input[type=range] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.05);
+      outline: none;
+      width: 100%;
+      transition: background 0.2s;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1), inset 0 0 0 4px var(--accent);
+      transition: transform 0.1s;
+    }
+
+    input[type=range]::-webkit-slider-thumb:active {
+      transform: scale(1.1);
+    }
+
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    input[type=number] {
+      -moz-appearance: textfield;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-family: 'Outfit', sans-serif;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .canvas-cursor {
+      cursor: crosshair;
+    }
+
+    input, select, button {
+      font-family: 'Michroma', sans-serif;
+    }
+
+    .panel {
+      background: var(--panel-bg);
+      backdrop-filter: blur(16px) saturate(180%);
+      border: 1px solid var(--border);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.03);
+    }
+
+    .badge {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      opacity: 0.6;
+    }
+
+    .tool-btn {
+      padding: 8px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      background: rgba(255, 255, 255, 0.5);
+    }
+
+    .tool-btn:hover {
+      background: #fff;
+      color: var(--accent);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 15px rgba(0, 0, 0, 0.05);
+    }
+
+    .tool-btn.active {
+      background: #fff;
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 8px 20px rgba(0, 129, 138, 0.15);
+    }
+
+    .sec-head-line {
+      height: 1px;
+      flex: 1;
+      background: linear-gradient(to right, transparent, var(--border), transparent);
+    }
+
+    .glossy-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.4) 0%, transparent 50%, rgba(255,255,255,0.1) 100%);
+      pointer-events: none;
+    }
+
+    .logo-container {
+      transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+  </style>
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useRef, useCallback, useEffect, useMemo } = React;
+
+    function catmullRomPath(pts) {
+      if (pts.length < 2) return '';
+      if (pts.length === 2) return `M${pts[0].x},${pts[0].y} L${pts[1].x},${pts[1].y}`;
+      let d = `M${pts[0].x},${pts[0].y}`;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+        const cp1x = p1.x + (p2.x - p0.x) / 6, cp1y = p1.y + (p2.y - p0.y) / 6;
+        const cp2x = p2.x - (p3.x - p1.x) / 6, cp2y = p2.y - (p3.y - p1.y) / 6;
+        d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+      }
+      return d;
+    }
+
+    function rotatePt(pt, deg) {
+      const rad = deg * Math.PI / 180, c = Math.cos(rad), s = Math.sin(rad);
+      return { x: pt.x * c - pt.y * s, y: pt.x * s + pt.y * c };
+    }
+
+    function mirrorPoint(pt) {
+      return { x: pt.x, y: -pt.y };
+    }
+
+    function getRoundedPolyPoints(points, r, steps = 8) {
+      const pts = [];
+      const len = points.length;
+      for (let i = 0; i < len; i++) {
+        const p1 = points[i], p2 = points[(i + 1) % len], p3 = points[(i + 2) % len];
+        const v1 = { x: p1.x - p2.x, y: p1.y - p2.y };
+        const l1 = Math.hypot(v1.x, v1.y) || 1;
+        const v2 = { x: p3.x - p2.x, y: p3.y - p2.y };
+        const l2 = Math.hypot(v2.x, v2.y) || 1;
+        const maxR = Math.min(r, l1 / 2, l2 / 2);
+
+        const pa = { x: p2.x + v1.x * (maxR / l1), y: p2.y + v1.y * (maxR / l1) };
+        const pb = { x: p2.x + v2.x * (maxR / l2), y: p2.y + v2.y * (maxR / l2) };
+
+        if (maxR > 0) {
+          for (let j = 0; j <= steps; j++) {
+            const t = j / steps, u = 1 - t;
+            pts.push({ x: u * u * pa.x + 2 * u * t * p2.x + t * t * pb.x, y: u * u * pa.y + 2 * u * t * p2.y + t * t * pb.y });
+          }
+        } else {
+          pts.push(p2);
+        }
+      }
+
+      const finalPts = [];
+      for (let i = 0; i < pts.length; i++) {
+        const cur = pts[i], next = pts[(i + 1) % pts.length];
+        const dist = Math.hypot(next.x - cur.x, next.y - cur.y);
+        const segments = Math.max(1, Math.ceil(dist / 4));
+        for (let s = 0; s < segments; s++) {
+          finalPts.push({ x: cur.x + (next.x - cur.x) * s / segments, y: cur.y + (next.y - cur.y) * s / segments });
+        }
+      }
+      return finalPts;
+    }
+
+    function getSplinePoints(pts, stepsPerSegment = 30) {
+      if (!pts || pts.length < 2) return [];
+      if (pts.length === 2) {
+        const res = [];
+        for (let i = 0; i <= stepsPerSegment; i++) res.push({ x: pts[0].x + (pts[1].x - pts[0].x) * i / stepsPerSegment, y: pts[0].y + (pts[1].y - pts[0].y) * i / stepsPerSegment });
+        return res;
+      }
+      const res = [];
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+        for (let j = 0; j < (i === pts.length - 2 ? stepsPerSegment + 1 : stepsPerSegment); j++) {
+          const t = j / stepsPerSegment;
+          const t2 = t * t, t3 = t2 * t;
+          const x = 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
+          const y = 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
+          res.push({ x, y });
+        }
+      }
+      return res;
+    }
+
+    function shearPt(p, shear, R) {
+      if (shear === 0) return p;
+      const rad = Math.hypot(p.x, p.y);
+      const a = Math.atan2(p.y, p.x) + (shear / 100) * (rad / R) * (Math.PI / 2);
+      return { x: rad * Math.cos(a), y: rad * Math.sin(a) };
+    }
+
+    function generateShapePts(shape) {
+      if (shape.type === 'freehand') return shape.pts || [];
+      if (shape.type === 'line') {
+        const pts = [];
+        if (!shape.pts) return [];
+        for (let i = 0; i < shape.pts.length - 1; i++) {
+          const p1 = shape.pts[i], p2 = shape.pts[i + 1];
+          const steps = Math.max(2, Math.ceil(Math.hypot(p2.x - p1.x, p2.y - p1.y) / 5));
+          for (let j = 0; j < (i === shape.pts.length - 2 ? steps + 1 : steps); j++) pts.push({ x: p1.x + (p2.x - p1.x) * j / steps, y: p1.y + (p2.y - p1.y) * j / steps });
+        }
+        return pts;
+      }
+      if (shape.type === 'arc') return getSplinePoints(shape.pts || [], 30);
+
+      let basePts = [];
+      const { shapeType, cx, cy, w, h, angle, r } = shape;
+      if (shapeType === 'circle') {
+        for (let i = 0; i < 64; i++) {
+          const a = (i / 64) * Math.PI * 2;
+          basePts.push({ x: (w / 2) * Math.cos(a), y: (h / 2) * Math.sin(a) });
+        }
+      } else if (shapeType === 'square') {
+        basePts.push({ x: -w / 2, y: -h / 2 }, { x: w / 2, y: -h / 2 }, { x: w / 2, y: h / 2 }, { x: -w / 2, y: h / 2 });
+      } else if (shapeType === 'triangle') {
+        basePts.push({ x: -w / 2, y: 0 }, { x: w / 2, y: h / 2 }, { x: w / 2, y: -h / 2 });
+      } else if (shapeType === 'polygon') {
+        const sides = shape.sides || 5;
+        for (let i = 0; i < sides; i++) {
+          const a = Math.PI + (i / sides) * Math.PI * 2;
+          basePts.push({ x: (w / 2) * Math.cos(a), y: (h / 2) * Math.sin(a) });
+        }
+      }
+
+      if (shapeType !== 'circle') basePts = getRoundedPolyPoints(basePts, r || 0, 8);
+
+      return basePts.map(p => {
+        const rot = rotatePt(p, angle);
+        return { x: rot.x + cx, y: rot.y + cy };
+      });
+    }
+
+    function toDXF(strokes, spokeCount, radialSymmetry, symmetry, designShear, outerR) {
+      let dxf = "0\nSECTION\n2\nENTITIES\n";
+      const count = radialSymmetry ? spokeCount : 1;
+
+      const addLine = (p1, p2) => {
+        dxf += `0\nLINE\n8\n0\n10\n${p1.x.toFixed(4)}\n20\n${p1.y.toFixed(4)}\n11\n${p2.x.toFixed(4)}\n21\n${p2.y.toFixed(4)}\n`;
+      };
+
+      strokes.forEach(stroke => {
+        let pts = generateShapePts(stroke).map(p => shearPt(p, designShear, outerR));
+        if (!pts || pts.length < 2) return;
+        let isClosed = false;
+        if (stroke.type === 'freehand') {
+          if (pts.length > 2 && Math.hypot(pts[0].x - pts[pts.length - 1].x, pts[0].y - pts[pts.length - 1].y) < 40) isClosed = true;
+        } else if (stroke.type !== 'line' && stroke.type !== 'arc') {
+          isClosed = true;
+        }
+        if (stroke.fillColor) isClosed = true;
+
+        for (let i = 0; i < count; i++) {
+          const angle = (360 / spokeCount) * i;
+          const rotPts = pts.map(p => rotatePt(p, angle));
+
+          for (let j = 0; j < rotPts.length - 1; j++) addLine(rotPts[j], rotPts[j + 1]);
+          if (isClosed) addLine(rotPts[rotPts.length - 1], rotPts[0]);
+
+          if (symmetry) {
+            const mirPts = rotPts.map(p => mirrorPoint(p));
+            for (let j = 0; j < mirPts.length - 1; j++) addLine(mirPts[j], mirPts[j + 1]);
+            if (isClosed) addLine(mirPts[mirPts.length - 1], mirPts[0]);
+          }
+        }
+      });
+      dxf += "0\nENDSEC\n0\nEOF\n";
+      return dxf;
+    }
+
+    function Defs() {
+      return (
+        <defs>
+          <radialGradient id="bgG" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ffffff" />
+            <stop offset="100%" stopColor="#eef4f9" />
+          </radialGradient>
+          <radialGradient id="rimG" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#f8f9fb" />
+            <stop offset="70%" stopColor="#e0e4e9" />
+            <stop offset="100%" stopColor="#c0c5cc" />
+          </radialGradient>
+          <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="3" />
+            <feOffset dx="0" dy="2" result="offsetblur" />
+            <feComponentTransfer>
+              <feFuncA type="linear" slope="0.2" />
+            </feComponentTransfer>
+            <feMerge>
+              <feMergeNode />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+      );
+    }
+
+    function RenderStroke({ stroke, pts, color, width, filter, isSelected, onSelect, designShear, outerR, interactive }) {
+      if (!pts || pts.length < 2) return null;
+      const sheared = pts.map(p => shearPt(p, designShear, outerR));
+      let d = '';
+      let closed = false;
+      if (stroke.type === 'freehand') {
+        if (sheared.length > 2) {
+          const p1 = sheared[0], p2 = sheared[sheared.length - 1];
+          if (Math.hypot(p1.x - p2.x, p1.y - p2.y) < 40) closed = true;
+        }
+        d = catmullRomPath(sheared) + (closed || stroke.fillColor ? ' Z' : '');
+      } else if (stroke.type === 'line' || stroke.type === 'arc') {
+        d = `M ${sheared[0].x} ${sheared[0].y} ` + sheared.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ') + (stroke.fillColor ? ' Z' : '');
+      } else {
+        closed = true;
+        d = `M ${sheared[0].x} ${sheared[0].y} ` + sheared.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ') + ' Z';
+      }
+
+      const hasDefaultFill = (stroke.type !== 'freehand' && stroke.type !== 'line' && stroke.type !== 'arc') || (stroke.type === 'freehand' && closed);
+      const fill = stroke.fillColor || (hasDefaultFill ? `${color}11` : "none");
+
+      return (
+        <path
+          d={d} fill={fill}
+          stroke={isSelected ? "#00818a" : color} strokeWidth={isSelected ? width + 2 : width}
+          strokeLinecap="round" strokeLinejoin="round" filter={filter}
+          onMouseDown={interactive ? onSelect : undefined}
+          className={interactive && onSelect ? "cursor-pointer" : ""}
+          pointerEvents={interactive ? "all" : "none"}
+        />
+      );
+    }
+
+    function RadialStrokes({ strokes, spokeCount, radialSymmetry, color, width, symmetry, wedgeDeg, activeTool, selectedId, onShapeClick, designShear, outerR }) {
+      const count = radialSymmetry ? spokeCount : 1;
+      const interactive = activeTool === 'select' || activeTool === 'fill';
+      return (
+        <>
+          {Array.from({ length: count }).map((_, i) => (
+            <g key={i} transform={`rotate(${(360 / spokeCount) * i})`}>
+              {strokes.map((stroke) => {
+                const isSelected = stroke.id === selectedId;
+                const handleSelect = (e) => { e.stopPropagation(); onShapeClick(stroke.id); };
+                const strokePts = generateShapePts(stroke);
+                const mirroredPts = symmetry ? strokePts.map(p => mirrorPoint(p)) : null;
+
+                return (
+                  <g key={stroke.id}>
+                    <RenderStroke stroke={stroke} pts={strokePts} color={color} width={width} filter="url(#softShadow)"
+                      isSelected={isSelected} onSelect={handleSelect} designShear={designShear} outerR={outerR} interactive={interactive} />
+                    {mirroredPts && <RenderStroke stroke={{ ...stroke, id: stroke.id + '_m' }} pts={mirroredPts} color={color} width={width} filter="url(#softShadow)"
+                      designShear={designShear} outerR={outerR} interactive={interactive} />}
+                  </g>
+                );
+              })}
+            </g>
+          ))}
+        </>
+      );
+    }
+
+    function BoltPattern({ radiusPx, lugCount, lugPx }) {
+      return (
+        <>{Array.from({ length: lugCount }).map((_, i) => {
+          const a = (360 / lugCount) * i * Math.PI / 180;
+          const x = radiusPx * Math.cos(a), y = radiusPx * Math.sin(a);
+          return (
+            <g key={i}>
+              <circle cx={x} cy={y} r={lugPx + 1.5} fill="#fff" stroke="#00818a" strokeWidth="1" opacity="0.9" />
+              <circle cx={x} cy={y} r={lugPx} fill="#f1f5f9" stroke="#00818a44" strokeWidth="0.5" />
+              <circle cx={x} cy={y} r={lugPx * 0.38} fill="none" stroke="#00818a" strokeWidth="0.5" opacity="0.4" />
+            </g>
+          );
+        })}</>
+      );
+    }
+
+    function CenterLock({ innerR }) {
+      const r = innerR * 0.85;
+      return (
+        <g>
+          <circle cx="0" cy="0" r={r} fill="none" stroke="#00818a" strokeWidth="1.2" opacity="0.5" />
+          <circle cx="0" cy="0" r={r * 0.65} fill="#fff" stroke="#00818a" strokeWidth="0.8" opacity="0.8" />
+          {Array.from({ length: 6 }).map((_, i) => {
+            const a = (60 * i) * Math.PI / 180;
+            return <circle key={i} cx={r * 0.83 * Math.cos(a)} cy={r * 0.83 * Math.sin(a)} r={r * 0.1} fill="#00818a" opacity="0.4" />;
+          })}
+          <text x="0" y="3.5" textAnchor="middle" fill="#00818a" fontSize="7" fontWeight="bold" fontFamily="Outfit" opacity="0.6">C/L</text>
+        </g>
+      );
+    }
+
+    function Slider({ label, value, min, max, step = 1, unit = '', onChange, allowText = false }) {
+      const disp = Number.isInteger(value) ? value : value.toFixed(1);
+      return (
+        <div className="mb-4">
+          <div className="flex justify-between items-center mb-1">
+            <span className="badge text-slate-500 uppercase tracking-widest">{label}</span>
+            {allowText ? (
+              <div className="flex items-center gap-1">
+                <input type="number" step={step} value={Number(value).toString()} onChange={e => onChange(parseFloat(e.target.value) || 0)} className="bg-white border border-slate-200 focus:border-cyan-500 rounded px-1.5 py-0.5 text-cyan-600 font-bold text-xs text-right w-16 outline-none transition-colors" />
+                {unit && <span className="text-xs text-slate-400 font-bold">{unit}</span>}
+              </div>
+            ) : (
+              <span className="text-xs text-cyan-600 font-bold">{disp}{unit}</span>
+            )}
+          </div>
+          <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(parseFloat(e.target.value))} />
+        </div>
+      );
+    }
+
+    const PCD_OPTIONS = [98, 100, 108, 110, 112, 114.3, 120, 130];
+    function DiscreteSlider({ label, value, options, unit = '', onChange }) {
+      const idx = options.indexOf(value);
+      return (
+        <div className="mb-4">
+          <div className="flex justify-between items-center mb-1">
+            <span className="badge text-slate-500 uppercase tracking-widest">{label}</span>
+            <div className="flex items-center gap-1">
+              <select value={value} onChange={e => onChange(parseFloat(e.target.value))} className="bg-white border border-slate-200 focus:border-cyan-500 rounded px-1.5 py-0.5 text-cyan-600 font-bold text-xs text-right outline-none">
+                {options.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+              {unit && <span className="text-xs text-slate-400 font-bold">{unit}</span>}
+            </div>
+          </div>
+          <input type="range" min={0} max={options.length - 1} step={1} value={idx >= 0 ? idx : 0} onChange={e => onChange(options[parseInt(e.target.value)])} />
+        </div>
+      );
+    }
+
+    function ButtonGroup({ label, value, options, onChange }) {
+      return (
+        <div className="mb-4">
+          <div className="flex justify-between items-center mb-1">
+            <span className="badge text-slate-500 uppercase tracking-widest">{label}</span>
+          </div>
+          <div className="flex gap-1 mt-2">
+            {options.map(o => (
+              <button key={o.val} onClick={() => onChange(o.val)} className={`flex-1 py-1 text-xs font-bold rounded border transition-all ${value === o.val ? 'bg-cyan-600 border-cyan-600 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-500 hover:border-cyan-400'}`}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function Toggle({ label, value, onChange, desc }) {
+      return (
+        <div className="flex items-center justify-between mb-3 py-2 border-b border-slate-100">
+          <div>
+            <div className="badge text-slate-500 uppercase tracking-widest">{label}</div>
+            {desc && <div className="text-slate-400 mt-0.5" style={{ fontSize: '9px' }}>{desc}</div>}
+          </div>
+          <button onClick={() => onChange(!value)} className={`relative w-10 h-5 rounded-full transition-all duration-300 ${value ? 'bg-cyan-500 shadow-inner' : 'bg-slate-200'}`}>
+            <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-md transition-transform duration-300 ${value ? 'translate-x-5' : ''}`} />
+          </button>
+        </div>
+      );
+    }
+
+    function SecHead({ children }) {
+      return (
+        <div className="flex items-center gap-2 mb-3 mt-5">
+          <div className="sec-head-line" />
+          <span className="badge text-slate-400 uppercase tracking-widest px-2">{children}</span>
+          <div className="sec-head-line" />
+        </div>
+      );
+    }
+
+    const TOOLS = [
+      { id: 'select', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>, label: 'Select' },
+      { id: 'freehand', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L4 2l3.5 12.5L13 16l5-3z"/></svg>, label: 'Pen' },
+      { id: 'line', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 19L19 5"/></svg>, label: 'Line' },
+      { id: 'arc', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 19c6-12 12-12 18 0"/></svg>, label: 'Spline' },
+      { id: 'circle', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/></svg>, label: 'Circle' },
+      { id: 'square', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>, label: 'Square' },
+      { id: 'triangle', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 20h18L12 4z"/></svg>, label: 'Triangle' },
+      { id: 'polygon', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l9 6.5V15.5L12 22l-9-6.5V8.5z"/></svg>, label: 'Polygon' },
+      { id: 'fill', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m19 11-9-9-7 7 9 9z"/><path d="m5 7 5 5"/><path d="m19 11-4-4"/><path d="M22 22a2 2 0 0 1-2-2c0-1.66-2-3-2-3s-2 1.34-2 3a2 2 0 0 1-4 0c0-1.66-2-3-2-3s-2 1.34-2 3a2 2 0 0 1-2 2"/></svg>, label: 'Fill' }
+    ];
+
+    function App() {
+      const svgRef = useRef(null);
+      const containerRef = useRef(null);
+      const [dimensions, setDimensions] = useState({ w: 800, h: 800 });
+
+      const [history, setHistory] = useState([[]]);
+      const [historyStep, setHistoryStep] = useState(0);
+      const strokes = history[historyStep];
+
+      const [drawing, setDrawing] = useState(false);
+      const [currentStroke, setCurrentStroke] = useState(null);
+      const [shapeStart, setShapeStart] = useState(null);
+
+      const [activeTool, setActiveTool] = useState('freehand');
+      const [selectedId, setSelectedId] = useState(null);
+      const [dragState, setDragState] = useState(null);
+      const [selectionBox, setSelectionBox] = useState(null);
+      const [panState, setPanState] = useState(null);
+
+      const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+      const [isMobile, setIsMobile] = useState(false);
+
+      const [fillColor, setFillColor] = useState('#44aaff');
+      const [snapToMirror, setSnapToMirror] = useState(false);
+      const [cornerRadius, setCornerRadius] = useState(5);
+      const [polygonSides, setPolygonSides] = useState(5);
+
+      const [showGrid, setShowGrid] = useState(false);
+      const [snapToGrid, setSnapToGrid] = useState(false);
+      const [gridSizeMm, setGridSizeMm] = useState(5);
+
+      const [wheelDiam, setWheelDiam] = useState(19);
+      const [spokeCount, setSpokeCount] = useState(5);
+      const [spokeThick, setSpokeThick] = useState(2.5);
+      const [designShear, setDesignShear] = useState(0);
+      const [hubBore, setHubBore] = useState(72.6);
+      const [pcd, setPcd] = useState(120);
+      const [lugCount, setLugCount] = useState(5);
+      const [lugHoleMm, setLugHoleMm] = useState(21);
+      const [capMm, setCapMm] = useState(68);
+      const [radialSymmetry, setRadialSymmetry] = useState(true);
+      const [symmetry, setSymmetry] = useState(true);
+      const [showGuides, setShowGuides] = useState(true);
+      const [showBolts, setShowBolts] = useState(true);
+      const [showWedge, setShowWedge] = useState(true);
+
+      const [camera, setCamera] = useState({ x: 0, y: 0, zoom: 1 });
+
+      const stateRef = useRef({ drawing, currentStroke, activeTool });
+      useEffect(() => { stateRef.current = { drawing, currentStroke, activeTool }; }, [drawing, currentStroke, activeTool]);
+
+      const isCenterLock = lugCount === 1;
+      const size = useMemo(() => Math.min(dimensions.w, dimensions.h) * 0.95, [dimensions]);
+      const outerR = useMemo(() => Math.min(size * 0.40 * (wheelDiam / 19), size * 0.48), [size, wheelDiam]);
+      const mmToPx = useMemo(() => outerR / (wheelDiam * 25.4 / 2), [outerR, wheelDiam]);
+      const innerR = useMemo(() => (hubBore / 2) * mmToPx, [hubBore, mmToPx]);
+      const wedgeDeg = 360 / spokeCount;
+
+      const pcdRadPx = (pcd / 2) * mmToPx;
+      const lugPx = (lugHoleMm / 2) * mmToPx;
+      const capPx = (capMm / 2) * mmToPx;
+
+      const toggleFullscreen = useCallback(() => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(err => console.log(err));
+        } else {
+          document.exitFullscreen();
+        }
+      }, []);
+
+      const resetCamera = useCallback(() => {
+        setCamera({ x: 0, y: 0, zoom: 1 });
+      }, []);
+
+      useEffect(() => {
+        const checkMob = () => setIsMobile(window.innerWidth < 640);
+        checkMob();
+        window.addEventListener('resize', checkMob);
+        return () => window.removeEventListener('resize', checkMob);
+      }, []);
+
+      const commitStroke = useCallback((stroke, fullStep = null) => {
+        const newHistory = history.slice(0, historyStep + 1);
+        if (fullStep) {
+          newHistory.push(fullStep);
+        } else {
+          newHistory.push([...strokes, stroke]);
+        }
+        if (newHistory.length > 20) newHistory.shift();
+        setHistory(newHistory);
+        setHistoryStep(newHistory.length - 1);
+      }, [strokes, history, historyStep]);
+
+      const switchTool = useCallback((toolId) => {
+        const { drawing, currentStroke } = stateRef.current;
+        if (drawing && currentStroke && (currentStroke.type === 'line' || currentStroke.type === 'arc')) {
+          const finalPts = currentStroke.pts.slice(0, -1);
+          if (finalPts.length >= 2) commitStroke({ ...currentStroke, pts: finalPts });
+        }
+        setDrawing(false);
+        setCurrentStroke(null);
+        setActiveTool(toolId);
+        if (toolId !== 'select') setSelectedId(null);
+
+        if (toolId === 'line' || toolId === 'arc') {
+          setShowGrid(true);
+          setSnapToGrid(true);
+        }
+      }, [commitStroke]);
+
+      const undo = useCallback(() => { if (historyStep > 0) setHistoryStep(s => s - 1); }, [historyStep]);
+      const redo = useCallback(() => { if (historyStep < history.length - 1) setHistoryStep(s => s + 1); }, [historyStep, history]);
+      const clearCanvas = useCallback(() => {
+        commitStroke({ type: 'clear' });
+        const newHistory = history.slice(0, historyStep + 1);
+        newHistory.push([]);
+        if (newHistory.length > 20) newHistory.shift();
+        setHistory(newHistory);
+        setHistoryStep(newHistory.length - 1);
+      }, [history, historyStep, commitStroke]);
+
+      useEffect(() => {
+        const handleKey = (e) => {
+          if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { if (e.shiftKey) redo(); else undo(); }
+          if (e.key === 'Delete' || e.key === 'Backspace') clearCanvas();
+          if (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey) setSnapToMirror(v => !v);
+          if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey) setSymmetry(v => !v);
+          if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey) toggleFullscreen();
+          if (e.key.toLowerCase() === 'b' && !e.ctrlKey && !e.metaKey) switchTool('fill');
+          if (e.key.toLowerCase() === 'r' && !e.ctrlKey && !e.metaKey) resetCamera();
+          if (e.key.toLowerCase() === 'g' && !e.ctrlKey && !e.metaKey) setShowGuides(v => !v);
+          if (e.key.toLowerCase() === 'w' && !e.ctrlKey && !e.metaKey) setShowWedge(v => !v);
+
+          if (e.key === '1' && !e.ctrlKey && !e.metaKey) switchTool('select');
+          if (e.key === '2' && !e.ctrlKey && !e.metaKey) switchTool('freehand');
+          if (e.key === '3' && !e.ctrlKey && !e.metaKey) switchTool('line');
+          if (e.key === '4' && !e.ctrlKey && !e.metaKey) switchTool('arc');
+          if (e.key === '5' && !e.ctrlKey && !e.metaKey) switchTool('circle');
+          if (e.key === '6' && !e.ctrlKey && !e.metaKey) switchTool('square');
+          if (e.key === '7' && !e.ctrlKey && !e.metaKey) switchTool('triangle');
+          if (e.key === '8' && !e.ctrlKey && !e.metaKey) switchTool('polygon');
+          if (e.key === '9' && !e.ctrlKey && !e.metaKey) switchTool('fill');
+
+          if (e.key === 'Escape') {
+            const { drawing, currentStroke } = stateRef.current;
+            if (drawing && currentStroke && (currentStroke.type === 'line' || currentStroke.type === 'arc')) {
+              const finalPts = currentStroke.pts.slice(0, -1);
+              if (finalPts.length >= 2) commitStroke({ ...currentStroke, pts: finalPts });
+            }
+            setDrawing(false);
+            setCurrentStroke(null);
+            setActiveTool('select');
+            setSelectedId(null);
+          }
+        };
+        window.addEventListener('keydown', handleKey);
+        return () => window.removeEventListener('keydown', handleKey);
+      }, [undo, redo, clearCanvas, toggleFullscreen, resetCamera, switchTool, commitStroke]);
+
+      useEffect(() => {
+        const obs = new ResizeObserver(entries => {
+          for (const e of entries) {
+            setDimensions({ w: e.contentRect.width, h: e.contentRect.height });
+          }
+        });
+        if (containerRef.current) obs.observe(containerRef.current);
+        return () => obs.disconnect();
+      }, []);
+
+      const svgPoint = useCallback((e) => {
+        const svg = svgRef.current; if (!svg) return null;
+        const rect = svg.getBoundingClientRect();
+        const cx = e.touches ? e.touches[0].clientX : e.clientX;
+        const cy = e.touches ? e.touches[0].clientY : e.clientY;
+
+        let screenX = (cx - rect.left) - dimensions.w / 2;
+        let screenY = (cy - rect.top) - dimensions.h / 2;
+
+        const worldX = screenX / camera.zoom - camera.x;
+        const worldY = screenY / camera.zoom - camera.y;
+
+        return rotatePt({ x: worldX, y: worldY }, 90);
+      }, [dimensions, camera]);
+
+      const clampWedge = useCallback((pt) => {
+        const r = Math.hypot(pt.x, pt.y);
+        if (r < 0.1) return pt;
+        if (showWedge) {
+          const a = Math.atan2(pt.y, pt.x) * 180 / Math.PI;
+          const half = wedgeDeg / 2;
+          if (a < -half || a > half) {
+            const ac = Math.max(-half, Math.min(half, a));
+            return { x: r * Math.cos(ac * Math.PI / 180), y: r * Math.sin(ac * Math.PI / 180) };
+          }
+        }
+        return pt;
+      }, [wedgeDeg, showWedge]);
+
+      const processPoint = useCallback((pt, bypassWedge) => {
+        let p = { ...pt };
+        if (snapToGrid) {
+          const spacing = gridSizeMm * mmToPx;
+          p = { x: Math.round(p.x / spacing) * spacing, y: Math.round(p.y / spacing) * spacing };
+        }
+        if (bypassWedge) return p;
+        return clampWedge(p);
+      }, [snapToGrid, gridSizeMm, mmToPx, clampWedge]);
+
+      const startDrag = (e, action) => {
+        e.stopPropagation();
+        const newHistory = history.slice(0, historyStep + 1);
+        newHistory.push([...history[historyStep]]);
+        if (newHistory.length > 20) newHistory.shift();
+        setHistory(newHistory);
+        setHistoryStep(newHistory.length - 1);
+        setDragState({ action, startId: selectedId });
+      };
+
+      const handleShapeClick = useCallback((id) => {
+        if (activeTool === 'select') {
+          setSelectedId(id);
+        } else if (activeTool === 'fill') {
+          const step = [...history[historyStep]];
+          const idx = step.findIndex(s => s.id === id);
+          if (idx !== -1) {
+            const s = step[idx];
+            if (s.type === 'freehand') {
+              if (!s.pts || s.pts.length < 3) return;
+              const p1 = s.pts[0], p2 = s.pts[s.pts.length - 1];
+              if (Math.hypot(p1.x - p2.x, p1.y - p2.y) > 40) return;
+            }
+            step[idx] = { ...s, fillColor };
+            commitStroke(null, step);
+          }
+        }
+      }, [activeTool, history, historyStep, fillColor, commitStroke]);
+
+      const onMouseDown = useCallback((e) => {
+        if (e.type.startsWith('mouse') && e.button !== 0 && e.button !== 1) return;
+
+        if (e.button === 1 || (e.touches && e.touches.length === 2)) {
+          e.preventDefault();
+          const cx = e.touches ? (e.touches[0].clientX + e.touches[1].clientX) / 2 : e.clientX;
+          const cy = e.touches ? (e.touches[0].clientY + e.touches[1].clientY) / 2 : e.clientY;
+          let initialDist = 0;
+          if (e.touches && e.touches.length === 2) {
+            initialDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+          }
+          setPanState({ startX: cx, startY: cy, startCamX: camera.x, startCamY: camera.y, startZoom: camera.zoom, initialDist });
+          return;
+        }
+
+        const pt = svgPoint(e); if (!pt) return;
+
+        if (activeTool === 'select' || activeTool === 'fill') {
+          if (activeTool === 'select') setSelectedId(null);
+          setSelectionBox({ start: pt, end: pt });
+          setDrawing(true);
+          return;
+        }
+
+        const isNodeTool = activeTool === 'line' || activeTool === 'arc';
+        const c = processPoint(pt, isNodeTool); if (!c) return;
+
+        if (isNodeTool) {
+          if (!drawing) {
+            setDrawing(true);
+            setCurrentStroke({ id: Date.now(), type: activeTool, pts: [c, c], cx: c.x, cy: c.y });
+          } else {
+            setCurrentStroke(prev => {
+              const newPts = [...prev.pts, c];
+              return { ...prev, pts: newPts, cx: newPts.reduce((a, b) => a + b.x, 0) / newPts.length, cy: newPts.reduce((a, b) => a + b.y, 0) / newPts.length };
+            });
+          }
+          return;
+        }
+
+        setDrawing(true);
+
+        if (activeTool === 'freehand') {
+          setCurrentStroke({ id: Date.now(), type: 'freehand', pts: [c] });
+        } else {
+          setShapeStart(c);
+          setCurrentStroke({ id: Date.now(), type: 'shape', shapeType: activeTool, cx: c.x, cy: c.y, w: 0, h: 0, angle: 0, r: cornerRadius, sides: activeTool === 'polygon' ? polygonSides : 0 });
+        }
+      }, [svgPoint, clampWedge, activeTool, cornerRadius, drawing, camera]);
+
+      const onMouseMove = useCallback((e) => {
+        if (panState) {
+          e.preventDefault();
+          const cx = e.touches ? (e.touches.length === 2 ? (e.touches[0].clientX + e.touches[1].clientX) / 2 : e.touches[0].clientX) : e.clientX;
+          const cy = e.touches ? (e.touches.length === 2 ? (e.touches[0].clientY + e.touches[1].clientY) / 2 : e.touches[0].clientY) : e.clientY;
+
+          const dx = (cx - panState.startX) / panState.startZoom;
+          const dy = (cy - panState.startY) / panState.startZoom;
+
+          let newZoom = panState.startZoom;
+          if (e.touches && e.touches.length === 2 && panState.initialDist > 0) {
+            const currentDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            newZoom = panState.startZoom * (currentDist / panState.initialDist);
+          }
+
+          setCamera({ x: panState.startCamX + dx, y: panState.startCamY + dy, zoom: newZoom });
+          return;
+        }
+
+        const pt = svgPoint(e); if (!pt) return;
+
+        if ((activeTool === 'select' || activeTool === 'fill') && selectionBox) {
+          setSelectionBox({ ...selectionBox, end: pt });
+          return;
+        }
+
+        if (dragState) {
+          const step = [...history[historyStep]];
+          const idx = step.findIndex(s => s.id === dragState.startId);
+          if (idx === -1) return;
+          const stroke = { ...step[idx] };
+
+          if (dragState.action.startsWith('pt_')) {
+            const i = parseInt(dragState.action.split('_')[1]);
+            const c = processPoint(pt, true);
+            if (c) {
+              const newPts = [...stroke.pts];
+              newPts[i] = c;
+              stroke.pts = newPts;
+              stroke.cx = newPts.reduce((sum, p) => sum + p.x, 0) / newPts.length;
+              stroke.cy = newPts.reduce((sum, p) => sum + p.y, 0) / newPts.length;
+            }
+          } else if (dragState.action === 'move') {
+            const dx = pt.x - stroke.cx, dy = pt.y - stroke.cy;
+            if (stroke.type === 'line' || stroke.type === 'arc' || stroke.type === 'freehand') {
+              stroke.pts = stroke.pts.map(p => ({ x: p.x + dx, y: p.y + dy }));
+              stroke.cx = pt.x; stroke.cy = pt.y;
+            } else {
+              stroke.cx = pt.x; stroke.cy = pt.y;
+            }
+          } else if (dragState.action === 'resize') {
+            const local = rotatePt({ x: pt.x - stroke.cx, y: pt.y - stroke.cy }, -stroke.angle);
+            stroke.w = Math.max(5, Math.abs(local.x) * 2);
+            stroke.h = Math.max(5, Math.abs(local.y) * 2);
+          } else if (dragState.action === 'rotate') {
+            stroke.angle = Math.atan2(pt.y - stroke.cy, pt.x - stroke.cx) * 180 / Math.PI + 90;
+          }
+
+          step[idx] = stroke;
+          const newHistory = [...history];
+          newHistory[historyStep] = step;
+          setHistory(newHistory);
+          return;
+        }
+
+        if (!drawing) return;
+        const isNodeTool = activeTool === 'line' || activeTool === 'arc';
+        const c = processPoint(pt, isNodeTool); if (!c) return;
+
+        if (isNodeTool) {
+          setCurrentStroke(prev => {
+            const newPts = [...prev.pts];
+            newPts[newPts.length - 1] = c;
+            return { ...prev, pts: newPts, cx: newPts.reduce((a, b) => a + b.x, 0) / newPts.length, cy: newPts.reduce((a, b) => a + b.y, 0) / newPts.length };
+          });
+          return;
+        }
+
+        if (activeTool === 'freehand') {
+          setCurrentStroke(prev => {
+            const last = prev.pts[prev.pts.length - 1];
+            if (last && Math.hypot(c.x - last.x, c.y - last.y) < 1.5) return prev;
+            return { ...prev, pts: [...prev.pts, c] };
+          });
+        } else {
+          setCurrentStroke(prev => {
+            let cx = (shapeStart.x + c.x) / 2, cy = (shapeStart.y + c.y) / 2;
+            let w = Math.abs(shapeStart.x - c.x), h = Math.abs(shapeStart.y - c.y);
+            let angle = prev.angle || 0;
+
+            if (snapToMirror) {
+              cy = 0;
+              h = Math.max(Math.abs(shapeStart.y), Math.abs(c.y)) * 2;
+            }
+
+            angle = Math.atan2(cy, cx) * 180 / Math.PI;
+            const localHalf = rotatePt({ x: c.x - cx, y: c.y - cy }, -angle);
+            w = Math.abs(localHalf.x) * 2;
+            h = Math.abs(localHalf.y) * 2;
+
+            return { ...prev, cx, cy, w, h, angle };
+          });
+        }
+      }, [drawing, svgPoint, clampWedge, activeTool, shapeStart, snapToMirror, dragState, history, historyStep, selectionBox, panState]);
+
+      const onMouseUp = useCallback(() => {
+        if (panState) { setPanState(null); return; }
+        if (dragState) { setDragState(null); return; }
+
+        if (activeTool === 'line' || activeTool === 'arc') return;
+
+        if (activeTool === 'select' && selectionBox) {
+          const minX = Math.min(selectionBox.start.x, selectionBox.end.x) - 5;
+          const maxX = Math.max(selectionBox.start.x, selectionBox.end.x) + 5;
+          const minY = Math.min(selectionBox.start.y, selectionBox.end.y) - 5;
+          const maxY = Math.max(selectionBox.start.y, selectionBox.end.y) + 5;
+          let foundId = null;
+          for (const stroke of strokes) {
+            let pts = generateShapePts(stroke);
+            pts = pts.map(p => shearPt(p, designShear, outerR));
+            const count = radialSymmetry ? spokeCount : 1;
+            for (let i = 0; i < count; i++) {
+              const angle = (360 / spokeCount) * i;
+              const rotPts = pts.map(p => rotatePt(p, angle));
+              if (rotPts.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY)) { foundId = stroke.id; break; }
+              if (symmetry) {
+                const mirPts = rotPts.map(p => mirrorPoint(p));
+                if (mirPts.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY)) { foundId = stroke.id; break; }
+              }
+            }
+            if (foundId) break;
+          }
+          if (foundId) setSelectedId(foundId);
+          setSelectionBox(null);
+          setDrawing(false);
+          return;
+        }
+
+        if (activeTool === 'fill') {
+          setSelectionBox(null);
+          setDrawing(false);
+          return;
+        }
+
+        if (!drawing) return;
+        setDrawing(false);
+        if (currentStroke && (currentStroke.type === 'shape' || currentStroke.type === 'freehand' || currentStroke.pts?.length >= 2)) {
+          commitStroke(currentStroke);
+        }
+        setCurrentStroke(null);
+        setShapeStart(null);
+      }, [drawing, currentStroke, commitStroke, dragState, activeTool, selectionBox, strokes, designShear, outerR, radialSymmetry, spokeCount, symmetry, panState]);
+
+      const onWheel = useCallback((e) => {
+        e.preventDefault();
+        const svg = svgRef.current; if (!svg) return;
+        const rect = svg.getBoundingClientRect();
+        const cx = e.clientX;
+        const cy = e.clientY;
+
+        let screenX = (cx - rect.left) - dimensions.w / 2;
+        let screenY = (cy - rect.top) - dimensions.h / 2;
+
+        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+        const newZoom = Math.min(Math.max(0.05, camera.zoom * zoomFactor), 50);
+
+        const worldX = screenX / camera.zoom - camera.x;
+        const worldY = screenY / camera.zoom - camera.y;
+
+        setCamera({
+          zoom: newZoom,
+          x: screenX / newZoom - worldX,
+          y: screenY / newZoom - worldY
+        });
+      }, [camera, dimensions]);
+
+      useEffect(() => {
+        const svg = svgRef.current;
+        if (svg) {
+          const handleWheel = (e) => onWheel(e);
+          svg.addEventListener('wheel', handleWheel, { passive: false });
+          return () => svg.removeEventListener('wheel', handleWheel);
+        }
+      }, [onWheel]);
+
+      const exportFormat = (format) => {
+        let blob;
+        if (format === 'svg') {
+          const svg = svgRef.current; if (!svg) return;
+          const src = new XMLSerializer().serializeToString(svg);
+          blob = new Blob([src], { type: 'image/svg+xml' });
+        } else if (format === 'dxf') {
+          const dxf = toDXF(allStrokes, spokeCount, radialSymmetry, symmetry, designShear, outerR);
+          blob = new Blob([dxf], { type: 'application/dxf' });
+        } else if (format === 'dwg') {
+          alert("DWG export requires server-side processing. Use DXF for now.");
+          return;
+        }
+        if (!blob) return;
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `wheel_${spokeCount}x${pcd}_${wheelDiam}in.${format}`;
+        a.click(); URL.revokeObjectURL(url);
+      };
+
+      const wedgePath = useMemo(() => {
+        const half = (wedgeDeg / 2) * Math.PI / 180;
+        const x1 = outerR * Math.cos(-half), y1 = outerR * Math.sin(-half);
+        const x2 = outerR * Math.cos(half), y2 = outerR * Math.sin(half);
+        const lg = wedgeDeg > 180 ? 1 : 0;
+        return `M0,0 L${x1},${y1} A${outerR},${outerR} 0 ${lg},1 ${x2},${y2} Z`;
+      }, [wedgeDeg, outerR]);
+
+      const allStrokes = drawing && currentStroke ? [...strokes, currentStroke] : strokes;
+      const selectedStroke = strokes.find(s => s.id === selectedId);
+
+      return (
+        <div className="flex flex-row h-screen w-screen overflow-hidden" style={{ background: 'var(--bg-main)' }}>
+
+          {/* COLLAPSED LOGO (FIXED ON TOOLBAR) */}
+          <div className={`absolute top-7 left-5 z-[70] pointer-events-none transition-all duration-500 ${!isSidebarOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
+             <img src="seifi_logo_small.png?v=2" alt="Checkered Flag" className="h-10 object-contain" />
+          </div>
+
+          {/* TOOLBAR */}
+          <div className="panel w-20 flex-shrink-0 flex flex-col items-center py-6 space-y-3" style={{ borderRight: '1px solid var(--border)', zIndex: 60, overflowY: 'auto' }}>
+            <div className="h-20 w-full flex-shrink-0"></div>
+            {TOOLS.map((t, idx) => (
+              <button key={t.id} onClick={() => { switchTool(t.id); }} title={`${t.label} (${idx + 1})`}
+                className={`tool-btn w-14 h-14 flex flex-col items-center justify-center relative ${activeTool === t.id ? 'active' : ''}`}>
+                <span className="absolute top-1 right-1 text-[9px] font-bold opacity-30">{idx + 1}</span>
+                <div className="mb-1">{t.icon}</div><span style={{ fontSize: '8px', fontWeight: 700, textTransform: 'uppercase' }}>{t.label}</span>
+              </button>
+            ))}
+            <div className="h-px w-10 bg-slate-200 my-4 flex-shrink-0"></div>
+            <button onClick={undo} disabled={historyStep === 0} className="tool-btn w-14 h-14 flex flex-col items-center justify-center opacity-70 hover:opacity-100 disabled:opacity-30">
+              <span className="text-lg">↺</span><span style={{ fontSize: '8px', fontWeight: 700 }}>Undo</span>
+            </button>
+            <button onClick={redo} disabled={historyStep === history.length - 1} className="tool-btn w-14 h-14 flex flex-col items-center justify-center opacity-70 hover:opacity-100 disabled:opacity-30">
+              <span className="text-lg">↻</span><span style={{ fontSize: '8px', fontWeight: 700 }}>Redo</span>
+            </button>
+          </div>
+
+          {/* LEFT PANEL */}
+          <div className={`panel flex flex-col h-full z-40 transition-all duration-500 ease-in-out ${isSidebarOpen ? 'w-80' : 'w-0'}`}
+            style={{ position: isMobile ? 'absolute' : 'relative', left: isMobile ? '80px' : '0px', borderRight: isSidebarOpen ? '1px solid var(--border)' : 'none', overflow: 'hidden', flexShrink: 0 }}>
+            <div className="w-80 flex flex-col h-full overflow-y-auto">
+              <div className="p-6 pt-10 border-b border-slate-100">
+                <img src="seifi_logo_full.png?v=2" alt="SEIFI Competition Alloys" className="h-20 object-contain mb-6 -ml-1" />
+                <div className="text-slate-900 font-bold text-sm leading-tight uppercase tracking-tight title-font">Radial Symmetry Visualizer</div>
+                <div className="text-slate-400 text-[9px] font-bold uppercase tracking-widest mt-1">Version 1.0</div>
+              </div>
+              <div className="p-6 flex-1">
+                {activeTool === 'fill' && (
+                  <>
+                    <SecHead>Fill Tool</SecHead>
+                    <div className="flex items-center gap-3 mb-4 mt-2 p-3 bg-white rounded-xl border border-slate-100 shadow-sm">
+                      <input type="color" value={fillColor} onChange={e => setFillColor(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer bg-transparent border-0 p-0 outline-none" />
+                      <span className="font-bold text-sm text-cyan-600">{fillColor.toUpperCase()}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 font-semibold px-1">Click any closed shape to apply color fill.</div>
+                  </>
+                )}
+
+                {activeTool !== 'freehand' && activeTool !== 'select' && activeTool !== 'fill' && activeTool !== 'line' && activeTool !== 'arc' && (
+                  <>
+                    <SecHead>Shape Properties</SecHead>
+                    <Toggle label="Snap to Mirror" value={snapToMirror} onChange={setSnapToMirror} desc="Locks shape X-coord to center axis" />
+                    {activeTool === 'polygon' && <Slider label="Sides" value={polygonSides} min={3} max={20} unit="" onChange={setPolygonSides} />}
+                    {activeTool !== 'circle' && <Slider label="Corner Radius" value={cornerRadius} min={0} max={50} unit="px" onChange={setCornerRadius} />}
+                  </>
+                )}
+
+                {activeTool === 'select' && selectedStroke && selectedStroke.type === 'shape' && (
+                  <>
+                    <SecHead>Edit Shape</SecHead>
+                    {selectedStroke.shapeType === 'polygon' && (
+                      <Slider label="Sides" value={selectedStroke.sides || 5} min={3} max={20} unit="" onChange={(val) => {
+                        const step = [...history[historyStep]];
+                        const idx = step.findIndex(s => s.id === selectedId);
+                        step[idx] = { ...step[idx], sides: val };
+                        const newHistory = [...history]; newHistory[historyStep] = step; setHistory(newHistory);
+                      }} />
+                    )}
+                    {selectedStroke.shapeType !== 'circle' && (
+                      <Slider label="Corner Radius" value={selectedStroke.r || 0} min={0} max={50} unit="px" onChange={(val) => {
+                        const step = [...history[historyStep]];
+                        const idx = step.findIndex(s => s.id === selectedId);
+                        step[idx] = { ...step[idx], r: val };
+                        const newHistory = [...history]; newHistory[historyStep] = step; setHistory(newHistory);
+                      }} />
+                    )}
+                    <button onClick={() => {
+                      const step = [...history[historyStep]];
+                      const idx = step.findIndex(s => s.id === selectedId);
+                      step[idx] = { ...step[idx], angle: step[idx].angle + 90 };
+                      const newHistory = [...history]; newHistory[historyStep] = step; setHistory(newHistory);
+                    }} className="w-full mt-2 py-2 px-4 rounded-xl text-xs font-bold text-cyan-600 bg-white border border-slate-200 hover:border-cyan-400 hover:shadow-md transition-all flex items-center justify-center gap-2">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path></svg> ROTATE 90°
+                    </button>
+                  </>
+                )}
+
+                <SecHead>Geometry</SecHead>
+                <Slider label="Spoke Count" value={spokeCount} min={3} max={20} onChange={setSpokeCount} />
+                <Slider label="Stroke Thickness" value={spokeThick} min={0.5} max={8} step={0.1} unit="px" allowText={true} onChange={setSpokeThick} />
+                <Slider label="Design Shear" value={designShear} min={-100} max={100} step={10} unit="%" onChange={setDesignShear} />
+
+                <SecHead>Parameters</SecHead>
+                <Slider label="Wheel Diameter" value={wheelDiam} min={13} max={24} step={0.5} unit="in" allowText={true} onChange={setWheelDiam} />
+                <DiscreteSlider label="PCD" value={pcd} options={PCD_OPTIONS} unit="mm" onChange={setPcd} />
+                <ButtonGroup label="Lug Count" value={lugCount} options={[{ label: 'C/L', val: 1 }, { label: '4', val: 4 }, { label: '5', val: 5 }, { label: '6', val: 6 }, { label: '8', val: 8 }, { label: '10', val: 10 }]} onChange={setLugCount} />
+                {!isCenterLock && <Slider label="Lug Hole Ø" value={lugHoleMm} min={13} max={33} step={0.1} unit="mm" allowText={true} onChange={setLugHoleMm} />}
+                <Slider label="Center Hub Bore" value={hubBore} min={50} max={100} step={0.1} unit="mm" allowText={true} onChange={setHubBore} />
+                <Slider label="Center Cap Ø" value={capMm} min={40} max={100} step={0.1} unit="mm" allowText={true} onChange={setCapMm} />
+
+                <SecHead>Options</SecHead>
+                <Toggle label="Radial Symmetry" value={radialSymmetry} onChange={setRadialSymmetry} />
+                <Toggle label="Mirror Mode" value={symmetry} onChange={setSymmetry} />
+                <Toggle label="Guide Rings (G)" value={showGuides} onChange={setShowGuides} />
+                <Toggle label="Show Grid" value={showGrid} onChange={setShowGrid} />
+                <Toggle label="Snap to Grid" value={snapToGrid} onChange={setSnapToGrid} />
+                {snapToGrid && <Slider label="Grid Spacing" value={gridSizeMm} min={1} max={50} step={1} unit="mm" allowText={true} onChange={setGridSizeMm} />}
+                <Toggle label="Bolt Pattern" value={showBolts} onChange={setShowBolts} />
+                <Toggle label="Active Wedge (W)" value={showWedge} onChange={setShowWedge} />
+
+                <SecHead>Export & Tools</SecHead>
+                <div className="flex gap-2 mb-2">
+                  <button onClick={() => exportFormat('svg')} className="flex-1 py-2 rounded-xl text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-700 shadow-lg transition-all">SVG</button>
+                  <button onClick={() => exportFormat('dxf')} className="flex-1 py-2 rounded-xl text-xs font-bold text-cyan-600 bg-white border border-slate-200 hover:border-cyan-400 transition-all" title="Export true CAD geometry">DXF</button>
+                </div>
+                <button onClick={clearCanvas} className="w-full mt-4 mb-8 py-2.5 px-4 rounded-xl text-sm font-bold text-red-500 bg-white border border-red-100 hover:bg-red-50 hover:border-red-200 transition-all">✕ CLEAR CANVAS</button>
+              </div>
+            </div>
+          </div>
+
+          {/* CANVAS */}
+          <div ref={containerRef} className="flex-1 flex items-center justify-center relative" style={{ background: 'var(--bg-main)' }}>
+            <button
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="absolute left-0 top-1/2 -translate-y-1/2 w-5 h-20 bg-white border border-slate-100 border-l-0 rounded-r-xl flex items-center justify-center text-slate-400 hover:text-cyan-600 hover:shadow-lg transition-all z-50 cursor-pointer"
+            >
+              <span className="text-[10px]">{isSidebarOpen ? '◀' : '▶'}</span>
+            </button>
+            <svg
+              ref={svgRef} width="100%" height="100%" viewBox={`${-dimensions.w / 2} ${-dimensions.h / 2} ${dimensions.w} ${dimensions.h}`}
+              style={{ display: 'block', touchAction: 'none' }} className="canvas-cursor select-none"
+              onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+              onTouchStart={onMouseDown} onTouchMove={onMouseMove} onTouchEnd={onMouseUp} onTouchCancel={onMouseUp}
+            >
+              <Defs />
+
+              <g transform={`scale(${camera.zoom}) translate(${camera.x}, ${camera.y}) rotate(-90)`}>
+
+                <circle cx="0" cy="0" r={outerR + 30} fill="url(#bgG)" />
+
+                <circle cx="0" cy="0" r={outerR} fill="none" stroke="#cbd5e1" strokeWidth="10" />
+                <circle cx="0" cy="0" r={outerR - 4} fill="none" stroke="#00818a" strokeWidth="0.8" opacity="0.25" />
+
+                {showGuides && <>
+                  <circle cx="0" cy="0" r={outerR * 0.88} fill="none" stroke="#00818a" strokeWidth="0.6" strokeDasharray="4,6" opacity="0.15" />
+                  <circle cx="0" cy="0" r={outerR * 0.65} fill="none" stroke="#00818a" strokeWidth="0.6" strokeDasharray="4,6" opacity="0.15" />
+                  <circle cx="0" cy="0" r={innerR} fill="none" stroke="#00818a" strokeWidth="0.6" strokeDasharray="3,5" opacity="0.15" />
+                </>}
+
+                {showGrid && (() => {
+                  const spacing = gridSizeMm * mmToPx;
+                  const maxExtent = outerR * 1.5;
+                  const steps = Math.ceil(maxExtent / spacing);
+                  const lines = [];
+                  for (let i = -steps; i <= steps; i++) {
+                    const p = i * spacing;
+                    lines.push(<line key={`v${i}`} x1={p} y1={-maxExtent} x2={p} y2={maxExtent} stroke="#00818a" strokeWidth={0.5 / camera.zoom} opacity={i === 0 ? 0.2 : 0.05} />);
+                    lines.push(<line key={`h${i}`} x1={-maxExtent} y1={p} x2={maxExtent} y2={p} stroke="#00818a" strokeWidth={0.5 / camera.zoom} opacity={i === 0 ? 0.2 : 0.05} />);
+                  }
+                  return <g>{lines}</g>;
+                })()}
+
+                {Array.from({ length: spokeCount }).map((_, i) => {
+                  const a = (360 / spokeCount) * i * Math.PI / 180;
+                  return <line key={i} x1="0" y1="0" x2={outerR * Math.cos(a)} y2={outerR * Math.sin(a)} stroke="#cbd5e1" strokeWidth="0.8" opacity="0.5" />;
+                })}
+
+                {showWedge && <path d={wedgePath} fill="#00818a" fillOpacity="0.03" stroke="#00818a" strokeWidth="0.6" strokeOpacity="0.2" />}
+                {(symmetry || snapToMirror) && showWedge && <line x1="0" y1="0" x2={outerR} y2="0" stroke="#00818a" strokeWidth="0.7" strokeDasharray="4,4" opacity={snapToMirror ? 0.4 : 0.2} />}
+
+                <RadialStrokes strokes={allStrokes} spokeCount={spokeCount} radialSymmetry={radialSymmetry} color="#00818a" width={spokeThick} symmetry={symmetry} wedgeDeg={wedgeDeg}
+                  activeTool={activeTool} selectedId={selectedId} onShapeClick={handleShapeClick} designShear={designShear} outerR={outerR} />
+
+                {selectionBox && activeTool === 'select' && (
+                  <rect
+                    x={Math.min(selectionBox.start.x, selectionBox.end.x)}
+                    y={Math.min(selectionBox.start.y, selectionBox.end.y)}
+                    width={Math.abs(selectionBox.start.x - selectionBox.end.x)}
+                    height={Math.abs(selectionBox.start.y - selectionBox.end.y)}
+                    fill="rgba(0, 129, 138, 0.08)" stroke="#00818a" strokeWidth="1" strokeDasharray="4,4"
+                  />
+                )}
+
+                {activeTool === 'select' && selectedStroke && selectedStroke.type === 'shape' && (
+                  <g transform={`translate(${selectedStroke.cx}, ${selectedStroke.cy}) rotate(${selectedStroke.angle})`}>
+                    <rect x={-selectedStroke.w / 2} y={-selectedStroke.h / 2} width={selectedStroke.w} height={selectedStroke.h} fill="none" stroke="#00818a" strokeDasharray="4,4" opacity="0.5" />
+                    <circle cx={-selectedStroke.w / 2} cy={-selectedStroke.h / 2} r={6 / camera.zoom} fill="#fff" stroke="#00818a" strokeWidth="1" cursor="nwse-resize" onMouseDown={(e) => startDrag(e, 'resize')} />
+                    <circle cx={selectedStroke.w / 2} cy={-selectedStroke.h / 2} r={6 / camera.zoom} fill="#fff" stroke="#00818a" strokeWidth="1" cursor="nesw-resize" onMouseDown={(e) => startDrag(e, 'resize')} />
+                    <circle cx={selectedStroke.w / 2} cy={selectedStroke.h / 2} r={6 / camera.zoom} fill="#fff" stroke="#00818a" strokeWidth="1" cursor="nwse-resize" onMouseDown={(e) => startDrag(e, 'resize')} />
+                    <circle cx={-selectedStroke.w / 2} cy={selectedStroke.h / 2} r={6 / camera.zoom} fill="#fff" stroke="#00818a" strokeWidth="1" cursor="nesw-resize" onMouseDown={(e) => startDrag(e, 'resize')} />
+                    <line x1={0} y1={-selectedStroke.h / 2} x2={0} y2={-selectedStroke.h / 2 - 25 / camera.zoom} stroke="#00818a" opacity="0.5" />
+                    <circle cx={0} cy={-selectedStroke.h / 2 - 25 / camera.zoom} r={6 / camera.zoom} fill="#ff4d4d" cursor="ew-resize" onMouseDown={(e) => startDrag(e, 'rotate')} />
+                    <circle cx={0} cy={0} r={8 / camera.zoom} fill="#00818a" cursor="move" onMouseDown={(e) => startDrag(e, 'move')} />
+                  </g>
+                )}
+
+                {activeTool === 'select' && selectedStroke && (selectedStroke.type === 'line' || selectedStroke.type === 'arc' || selectedStroke.type === 'freehand') && (
+                  <g>
+                    {selectedStroke.pts?.map((pt, i) => (
+                      <circle key={i} cx={pt.x} cy={pt.y} r={5 / camera.zoom} fill="#fff" stroke={i === 0 ? "#10b981" : i === selectedStroke.pts.length - 1 ? "#ef4444" : "#00818a"} strokeWidth="1.5" cursor="move" onMouseDown={(e) => startDrag(e, `pt_${i}`)} />
+                    ))}
+                    {selectedStroke.pts?.length > 0 && <circle cx={selectedStroke.cx || selectedStroke.pts[0].x} cy={selectedStroke.cy || selectedStroke.pts[0].y} r={8 / camera.zoom} fill="#fbbf24" cursor="move" onMouseDown={(e) => startDrag(e, 'move')} />}
+                  </g>
+                )}
+
+                <circle cx="0" cy="0" r={innerR + 6} fill="#fff" stroke="#cbd5e1" strokeWidth="1.5" />
+                <circle cx="0" cy="0" r={innerR} fill="url(#rimG)" stroke="#00818a" strokeWidth="1" opacity="0.4" />
+
+                {showBolts && !isCenterLock && <BoltPattern radiusPx={pcdRadPx} lugCount={lugCount} lugPx={lugPx} />}
+                {showBolts && isCenterLock && <CenterLock innerR={innerR} />}
+
+                {showBolts && !isCenterLock && <circle cx="0" cy="0" r={pcdRadPx} fill="none" stroke="#00818a" strokeWidth="0.4" strokeDasharray="2,5" opacity="0.15" />}
+
+                <circle cx="0" cy="0" r={capPx} fill="#f8fafc" stroke="#e2e8f0" strokeWidth="2" />
+                <circle cx="0" cy="0" r={capPx * 0.58} fill="#fff" stroke="#00818a" strokeWidth="0.5" opacity="0.3" />
+                <circle cx="0" cy="0" r={capPx * 0.2} fill="#00818a" opacity="0.3" />
+              </g>
+            </svg>
+
+            <div className="absolute top-6 right-6 flex flex-col gap-3 z-50">
+              <button onClick={resetCamera} className="p-3 bg-white/80 backdrop-blur-md rounded-2xl text-slate-500 hover:text-cyan-600 border border-slate-100 transition-all shadow-sm hover:shadow-lg flex gap-2 items-center text-[10px] font-bold uppercase tracking-widest" title="Reset Camera (R)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                <span className="hidden sm:inline">Recenter</span>
+              </button>
+              <button onClick={toggleFullscreen} className="p-3 bg-white/80 backdrop-blur-md rounded-2xl text-slate-500 hover:text-cyan-600 border border-slate-100 transition-all shadow-sm hover:shadow-lg flex gap-2 items-center text-[10px] font-bold uppercase tracking-widest" title="Fullscreen (F)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+                <span className="hidden sm:inline">Fullscreen</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+
+</html>
