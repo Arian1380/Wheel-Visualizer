@@ -302,13 +302,31 @@
       });
     }
 
-    function toDXF(strokes, spokeCount, radialSymmetry, symmetry, designShear, outerR) {
+    function toDXF(strokes, spokeCount, radialSymmetry, symmetry, designShear, outerR, innerR, pcdRadPx, lugPx, lugCount, isCenterLock) {
       let dxf = "0\nSECTION\n2\nENTITIES\n";
       const count = radialSymmetry ? spokeCount : 1;
 
       const addLine = (p1, p2) => {
         dxf += `0\nLINE\n8\n0\n10\n${p1.x.toFixed(4)}\n20\n${p1.y.toFixed(4)}\n11\n${p2.x.toFixed(4)}\n21\n${p2.y.toFixed(4)}\n`;
       };
+
+      const addCircle = (cx, cy, r) => {
+        dxf += `0\nCIRCLE\n8\n0\n10\n${cx.toFixed(4)}\n20\n${cy.toFixed(4)}\n40\n${r.toFixed(4)}\n`;
+      };
+
+      // Add wheel lip and hub bore
+      addCircle(0, 0, outerR);
+      addCircle(0, 0, innerR);
+
+      // Add lug holes
+      if (isCenterLock) {
+        addCircle(0, 0, innerR * 0.85);
+      } else {
+        for (let i = 0; i < lugCount; i++) {
+          const a = (360 / lugCount) * i * Math.PI / 180;
+          addCircle(pcdRadPx * Math.cos(a), pcdRadPx * Math.sin(a), lugPx);
+        }
+      }
 
       strokes.forEach(stroke => {
         let pts = generateShapePts(stroke).map(p => shearPt(p, designShear, outerR));
@@ -1114,30 +1132,45 @@
 
       const exportFormat = (format) => {
         let blob;
+        
+        const getCleanSVG = () => {
+          const svgClone = svgRef.current.cloneNode(true);
+          svgClone.querySelectorAll('.ui-element, .bg-element').forEach(el => el.remove());
+          svgClone.querySelectorAll('[filter]').forEach(el => el.removeAttribute('filter'));
+          const mainG = svgClone.querySelector('#main-group');
+          if (mainG) mainG.setAttribute('transform', 'rotate(-90)');
+          
+          const pad = 20;
+          const dim = (outerR + pad) * 2;
+          svgClone.setAttribute('viewBox', `${-(outerR + pad)} ${-(outerR + pad)} ${dim} ${dim}`);
+          svgClone.setAttribute('width', '2000');
+          svgClone.setAttribute('height', '2000');
+          
+          return new XMLSerializer().serializeToString(svgClone);
+        };
+
         if (format === 'svg') {
-          const svg = svgRef.current; if (!svg) return;
-          const src = new XMLSerializer().serializeToString(svg);
+          const src = getCleanSVG();
           blob = new Blob([src], { type: 'image/svg+xml' });
         } else if (format === 'dxf') {
-          const dxf = toDXF(allStrokes, spokeCount, radialSymmetry, symmetry, designShear, outerR);
+          const dxf = toDXF(allStrokes, spokeCount, radialSymmetry, symmetry, designShear, outerR, innerR, pcdRadPx, lugPx, lugCount, isCenterLock);
           blob = new Blob([dxf], { type: 'application/dxf' });
         } else if (format === 'dwg') {
           alert("DWG export requires server-side processing. Use DXF for now.");
           return;
         } else if (format === 'png' || format === 'jpeg') {
-          const svg = svgRef.current; if (!svg) return;
-          const src = new XMLSerializer().serializeToString(svg);
+          const src = getCleanSVG();
           const svgBlob = new Blob([src], {type: 'image/svg+xml;charset=utf-8'});
           const url = URL.createObjectURL(svgBlob);
           const img = new Image();
           img.onload = () => {
             const canvas = document.createElement('canvas');
-            canvas.width = dimensions.w;
-            canvas.height = dimensions.h;
+            canvas.width = 2000;
+            canvas.height = 2000;
             const ctx = canvas.getContext('2d');
             
             if (format === 'jpeg') {
-              ctx.fillStyle = '#f0f5fa';
+              ctx.fillStyle = '#ffffff';
               ctx.fillRect(0, 0, canvas.width, canvas.height);
             }
             
@@ -1151,7 +1184,7 @@
               a.download = `wheel_${spokeCount}x${pcd}_${wheelDiam}in.${format === 'jpeg' ? 'jpg' : 'png'}`;
               a.click();
               URL.revokeObjectURL(a.href);
-            }, `image/${format}`, 0.95);
+            }, `image/${format}`, 1.0);
           };
           img.src = url;
           return;
@@ -1320,18 +1353,18 @@
             >
               <Defs />
 
-              <g transform={`scale(${camera.zoom}) translate(${camera.x}, ${camera.y}) rotate(-90)`}>
+              <g id="main-group" transform={`scale(${camera.zoom}) translate(${camera.x}, ${camera.y}) rotate(-90)`}>
 
-                <circle cx="0" cy="0" r={outerR + 30} fill="url(#bgG)" />
+                <circle cx="0" cy="0" r={outerR + 30} fill="url(#bgG)" className="bg-element" />
 
                 <circle cx="0" cy="0" r={outerR} fill="none" stroke="#cbd5e1" strokeWidth="10" />
                 <circle cx="0" cy="0" r={outerR - 4} fill="none" stroke="#00818a" strokeWidth="0.8" opacity="0.25" />
 
-                {showGuides && <>
+                {showGuides && <g className="ui-element">
                   <circle cx="0" cy="0" r={outerR * 0.88} fill="none" stroke="#00818a" strokeWidth="0.6" strokeDasharray="4,6" opacity="0.15" />
                   <circle cx="0" cy="0" r={outerR * 0.65} fill="none" stroke="#00818a" strokeWidth="0.6" strokeDasharray="4,6" opacity="0.15" />
                   <circle cx="0" cy="0" r={innerR} fill="none" stroke="#00818a" strokeWidth="0.6" strokeDasharray="3,5" opacity="0.15" />
-                </>}
+                </g>}
 
                 {showGrid && (() => {
                   const spacing = gridSizeMm * mmToPx;
@@ -1343,22 +1376,24 @@
                     lines.push(<line key={`v${i}`} x1={p} y1={-maxExtent} x2={p} y2={maxExtent} stroke="#00818a" strokeWidth={0.5 / camera.zoom} opacity={i === 0 ? 0.2 : 0.05} />);
                     lines.push(<line key={`h${i}`} x1={-maxExtent} y1={p} x2={maxExtent} y2={p} stroke="#00818a" strokeWidth={0.5 / camera.zoom} opacity={i === 0 ? 0.2 : 0.05} />);
                   }
-                  return <g>{lines}</g>;
+                  return <g className="ui-element">{lines}</g>;
                 })()}
 
-                {Array.from({ length: spokeCount }).map((_, i) => {
-                  const a = (360 / spokeCount) * i * Math.PI / 180;
-                  return <line key={i} x1="0" y1="0" x2={outerR * Math.cos(a)} y2={outerR * Math.sin(a)} stroke="#cbd5e1" strokeWidth="0.8" opacity="0.5" />;
-                })}
+                <g className="ui-element">
+                  {Array.from({ length: spokeCount }).map((_, i) => {
+                    const a = (360 / spokeCount) * i * Math.PI / 180;
+                    return <line key={i} x1="0" y1="0" x2={outerR * Math.cos(a)} y2={outerR * Math.sin(a)} stroke="#cbd5e1" strokeWidth="0.8" opacity="0.5" />;
+                  })}
+                </g>
 
-                {showWedge && <path d={wedgePath} fill="#00818a" fillOpacity="0.03" stroke="#00818a" strokeWidth="0.6" strokeOpacity="0.2" />}
-                {(symmetry || snapToMirror) && showWedge && <line x1="0" y1="0" x2={outerR} y2="0" stroke="#00818a" strokeWidth="0.7" strokeDasharray="4,4" opacity={snapToMirror ? 0.4 : 0.2} />}
+                {showWedge && <path className="ui-element" d={wedgePath} fill="#00818a" fillOpacity="0.03" stroke="#00818a" strokeWidth="0.6" strokeOpacity="0.2" />}
+                {(symmetry || snapToMirror) && showWedge && <line className="ui-element" x1="0" y1="0" x2={outerR} y2="0" stroke="#00818a" strokeWidth="0.7" strokeDasharray="4,4" opacity={snapToMirror ? 0.4 : 0.2} />}
 
                 <RadialStrokes strokes={allStrokes} spokeCount={spokeCount} radialSymmetry={radialSymmetry} color="#00818a" width={spokeThick} symmetry={symmetry} wedgeDeg={wedgeDeg}
                   activeTool={activeTool} selectedId={selectedId} onShapeClick={handleShapeClick} designShear={designShear} outerR={outerR} />
 
                 {selectionBox && activeTool === 'select' && (
-                  <rect
+                  <rect className="ui-element"
                     x={Math.min(selectionBox.start.x, selectionBox.end.x)}
                     y={Math.min(selectionBox.start.y, selectionBox.end.y)}
                     width={Math.abs(selectionBox.start.x - selectionBox.end.x)}
@@ -1368,7 +1403,7 @@
                 )}
 
                 {activeTool === 'select' && selectedStroke && selectedStroke.type === 'shape' && (
-                  <g transform={`translate(${selectedStroke.cx}, ${selectedStroke.cy}) rotate(${selectedStroke.angle})`}>
+                  <g className="ui-element" transform={`translate(${selectedStroke.cx}, ${selectedStroke.cy}) rotate(${selectedStroke.angle})`}>
                     <rect x={-selectedStroke.w / 2} y={-selectedStroke.h / 2} width={selectedStroke.w} height={selectedStroke.h} fill="none" stroke="#00818a" strokeDasharray="4,4" opacity="0.5" />
                     <circle cx={-selectedStroke.w / 2} cy={-selectedStroke.h / 2} r={6 / camera.zoom} fill="#fff" stroke="#00818a" strokeWidth="1" cursor="nwse-resize" onMouseDown={(e) => startDrag(e, 'resize')} />
                     <circle cx={selectedStroke.w / 2} cy={-selectedStroke.h / 2} r={6 / camera.zoom} fill="#fff" stroke="#00818a" strokeWidth="1" cursor="nesw-resize" onMouseDown={(e) => startDrag(e, 'resize')} />
@@ -1381,7 +1416,7 @@
                 )}
 
                 {activeTool === 'select' && selectedStroke && (selectedStroke.type === 'line' || selectedStroke.type === 'arc' || selectedStroke.type === 'freehand') && (
-                  <g>
+                  <g className="ui-element">
                     {selectedStroke.pts?.map((pt, i) => (
                       <circle key={i} cx={pt.x} cy={pt.y} r={5 / camera.zoom} fill="#fff" stroke={i === 0 ? "#10b981" : i === selectedStroke.pts.length - 1 ? "#ef4444" : "#00818a"} strokeWidth="1.5" cursor="move" onMouseDown={(e) => startDrag(e, `pt_${i}`)} />
                     ))}
@@ -1390,7 +1425,7 @@
                 )}
 
                 {activeTool === 'eraser' && cursorPt && (
-                  <circle cx={cursorPt.x} cy={cursorPt.y} r={eraserSize} fill="none" stroke="#ef4444" strokeWidth={1.5 / camera.zoom} opacity="0.8" pointerEvents="none" />
+                  <circle className="ui-element" cx={cursorPt.x} cy={cursorPt.y} r={eraserSize} fill="none" stroke="#ef4444" strokeWidth={1.5 / camera.zoom} opacity="0.8" pointerEvents="none" />
                 )}
 
                 <circle cx="0" cy="0" r={innerR + 6} fill="#fff" stroke="#cbd5e1" strokeWidth="1.5" />
@@ -1399,7 +1434,7 @@
                 {showBolts && !isCenterLock && <BoltPattern radiusPx={pcdRadPx} lugCount={lugCount} lugPx={lugPx} />}
                 {showBolts && isCenterLock && <CenterLock innerR={innerR} />}
 
-                {showBolts && !isCenterLock && <circle cx="0" cy="0" r={pcdRadPx} fill="none" stroke="#00818a" strokeWidth="0.4" strokeDasharray="2,5" opacity="0.15" />}
+                {showBolts && !isCenterLock && <circle className="ui-element" cx="0" cy="0" r={pcdRadPx} fill="none" stroke="#00818a" strokeWidth="0.4" strokeDasharray="2,5" opacity="0.15" />}
 
                 <circle cx="0" cy="0" r={capPx} fill="#f8fafc" stroke="#e2e8f0" strokeWidth="2" />
                 <circle cx="0" cy="0" r={capPx * 0.58} fill="#fff" stroke="#00818a" strokeWidth="0.5" opacity="0.3" />
