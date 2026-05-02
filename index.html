@@ -276,8 +276,10 @@
       let basePts = [];
       const { shapeType, cx, cy, w, h, angle, r } = shape;
       if (shapeType === 'circle') {
-        for (let i = 0; i < 64; i++) {
-          const a = (i / 64) * Math.PI * 2;
+        const circum = Math.PI * Math.max(w, h);
+        const steps = Math.max(64, Math.ceil(circum / 4));
+        for (let i = 0; i < steps; i++) {
+          const a = (i / steps) * Math.PI * 2;
           basePts.push({ x: (w / 2) * Math.cos(a), y: (h / 2) * Math.sin(a) });
         }
       } else if (shapeType === 'square') {
@@ -313,7 +315,7 @@
         if (!pts || pts.length < 2) return;
         let isClosed = false;
         if (stroke.type === 'freehand') {
-          if (pts.length > 2 && Math.hypot(pts[0].x - pts[pts.length - 1].x, pts[0].y - pts[pts.length - 1].y) < 40) isClosed = true;
+          if (stroke.fillColor) isClosed = true;
         } else if (stroke.type !== 'line' && stroke.type !== 'arc') {
           isClosed = true;
         }
@@ -370,11 +372,8 @@
       let d = '';
       let closed = false;
       if (stroke.type === 'freehand') {
-        if (sheared.length > 2) {
-          const p1 = sheared[0], p2 = sheared[sheared.length - 1];
-          if (Math.hypot(p1.x - p2.x, p1.y - p2.y) < 40) closed = true;
-        }
-        d = catmullRomPath(sheared) + (closed || stroke.fillColor ? ' Z' : '');
+        if (stroke.fillColor) closed = true;
+        d = catmullRomPath(sheared) + (closed ? ' Z' : '');
       } else if (stroke.type === 'line' || stroke.type === 'arc') {
         d = `M ${sheared[0].x} ${sheared[0].y} ` + sheared.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ') + (stroke.fillColor ? ' Z' : '');
       } else {
@@ -539,6 +538,7 @@
     const TOOLS = [
       { id: 'select', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>, label: 'Select' },
       { id: 'freehand', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L4 2l3.5 12.5L13 16l5-3z"/></svg>, label: 'Pen' },
+      { id: 'eraser', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>, label: 'Eraser' },
       { id: 'line', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 19L19 5"/></svg>, label: 'Line' },
       { id: 'arc', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 19c6-12 12-12 18 0"/></svg>, label: 'Spline' },
       { id: 'circle', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/></svg>, label: 'Circle' },
@@ -566,6 +566,9 @@
       const [dragState, setDragState] = useState(null);
       const [selectionBox, setSelectionBox] = useState(null);
       const [panState, setPanState] = useState(null);
+      const [eraserSize, setEraserSize] = useState(15);
+      const [erasedStrokes, setErasedStrokes] = useState(null);
+      const [cursorPt, setCursorPt] = useState(null);
 
       const [isSidebarOpen, setIsSidebarOpen] = useState(true);
       const [isMobile, setIsMobile] = useState(false);
@@ -649,6 +652,7 @@
         }
         setDrawing(false);
         setCurrentStroke(null);
+        setErasedStrokes(null);
         setActiveTool(toolId);
         if (toolId !== 'select') setSelectedId(null);
 
@@ -684,13 +688,14 @@
 
           if (e.key === '1' && !e.ctrlKey && !e.metaKey) switchTool('select');
           if (e.key === '2' && !e.ctrlKey && !e.metaKey) switchTool('freehand');
-          if (e.key === '3' && !e.ctrlKey && !e.metaKey) switchTool('line');
-          if (e.key === '4' && !e.ctrlKey && !e.metaKey) switchTool('arc');
-          if (e.key === '5' && !e.ctrlKey && !e.metaKey) switchTool('circle');
-          if (e.key === '6' && !e.ctrlKey && !e.metaKey) switchTool('square');
-          if (e.key === '7' && !e.ctrlKey && !e.metaKey) switchTool('triangle');
-          if (e.key === '8' && !e.ctrlKey && !e.metaKey) switchTool('polygon');
-          if (e.key === '9' && !e.ctrlKey && !e.metaKey) switchTool('fill');
+          if (e.key === '3' && !e.ctrlKey && !e.metaKey) switchTool('eraser');
+          if (e.key === '4' && !e.ctrlKey && !e.metaKey) switchTool('line');
+          if (e.key === '5' && !e.ctrlKey && !e.metaKey) switchTool('arc');
+          if (e.key === '6' && !e.ctrlKey && !e.metaKey) switchTool('circle');
+          if (e.key === '7' && !e.ctrlKey && !e.metaKey) switchTool('square');
+          if (e.key === '8' && !e.ctrlKey && !e.metaKey) switchTool('triangle');
+          if (e.key === '9' && !e.ctrlKey && !e.metaKey) switchTool('polygon');
+          if (e.key === '0' && !e.ctrlKey && !e.metaKey) switchTool('fill');
 
           if (e.key === 'Escape') {
             const { drawing, currentStroke } = stateRef.current;
@@ -777,14 +782,78 @@
             const s = step[idx];
             if (s.type === 'freehand') {
               if (!s.pts || s.pts.length < 3) return;
-              const p1 = s.pts[0], p2 = s.pts[s.pts.length - 1];
-              if (Math.hypot(p1.x - p2.x, p1.y - p2.y) > 40) return;
             }
             step[idx] = { ...s, fillColor };
             commitStroke(null, step);
           }
         }
       }, [activeTool, history, historyStep, fillColor, commitStroke]);
+
+      const applyEraser = useCallback((pt) => {
+        setErasedStrokes(prev => {
+          const strokesToErase = prev || strokes;
+          const erasePts = [];
+          const count = radialSymmetry ? spokeCount : 1;
+          for (let i = 0; i < count; i++) {
+            const angle = -(360 / spokeCount) * i;
+            const rotP = rotatePt(pt, angle);
+            erasePts.push(rotP);
+            if (symmetry) {
+              erasePts.push(mirrorPoint(rotP));
+            }
+          }
+
+          let changed = false;
+          let newStrokes = [];
+
+          strokesToErase.forEach(stroke => {
+            let pts = generateShapePts(stroke);
+            if (!pts || pts.length === 0) return;
+
+            let isErased = pts.map(p => {
+               let pSheared = shearPt(p, designShear, outerR);
+               return Math.min(...erasePts.map(ep => Math.hypot(pSheared.x - ep.x, pSheared.y - ep.y))) < eraserSize;
+            });
+
+            if (!isErased.includes(true)) {
+               newStrokes.push(stroke);
+               return;
+            }
+
+            if (!isErased.includes(false)) {
+               changed = true;
+               return;
+            }
+
+            changed = true;
+            let isClosed = stroke.type !== 'line' && stroke.type !== 'arc' && stroke.type !== 'freehand';
+            if (stroke.type === 'freehand' && stroke.fillColor) isClosed = true;
+
+            let startIdx = 0;
+            if (isClosed) {
+               startIdx = isErased.indexOf(true);
+            }
+
+            let currentPts = [];
+            for (let i = 0; i < pts.length; i++) {
+               let idx = (startIdx + i) % pts.length;
+               if (isErased[idx]) {
+                  if (currentPts.length > 1) {
+                     newStrokes.push({ ...stroke, id: stroke.id + '_' + idx + '_' + Date.now(), type: 'freehand', pts: currentPts, shapeType: undefined, fillColor: undefined });
+                  }
+                  currentPts = [];
+               } else {
+                  currentPts.push(pts[idx]);
+               }
+            }
+            if (currentPts.length > 1) {
+               newStrokes.push({ ...stroke, id: stroke.id + '_end_' + Date.now(), type: 'freehand', pts: currentPts, shapeType: undefined, fillColor: undefined });
+            }
+          });
+          
+          return changed ? newStrokes : prev;
+        });
+      }, [strokes, radialSymmetry, spokeCount, symmetry, designShear, outerR, eraserSize]);
 
       const onMouseDown = useCallback((e) => {
         if (e.type.startsWith('mouse') && e.button !== 0 && e.button !== 1) return;
@@ -802,6 +871,13 @@
         }
 
         const pt = svgPoint(e); if (!pt) return;
+
+        if (activeTool === 'eraser') {
+          setDrawing(true);
+          setErasedStrokes([...strokes]);
+          applyEraser(pt);
+          return;
+        }
 
         if (activeTool === 'select' || activeTool === 'fill') {
           if (activeTool === 'select') setSelectedId(null);
@@ -834,7 +910,7 @@
           setShapeStart(c);
           setCurrentStroke({ id: Date.now(), type: 'shape', shapeType: activeTool, cx: c.x, cy: c.y, w: 0, h: 0, angle: 0, r: cornerRadius, sides: activeTool === 'polygon' ? polygonSides : 0 });
         }
-      }, [svgPoint, clampWedge, activeTool, cornerRadius, drawing, camera]);
+      }, [svgPoint, clampWedge, activeTool, cornerRadius, drawing, camera, strokes, applyEraser]);
 
       const onMouseMove = useCallback((e) => {
         if (panState) {
@@ -856,6 +932,12 @@
         }
 
         const pt = svgPoint(e); if (!pt) return;
+        setCursorPt(pt);
+
+        if (activeTool === 'eraser' && drawing) {
+          applyEraser(pt);
+          return;
+        }
 
         if ((activeTool === 'select' || activeTool === 'fill') && selectionBox) {
           setSelectionBox({ ...selectionBox, end: pt });
@@ -939,13 +1021,22 @@
             return { ...prev, cx, cy, w, h, angle };
           });
         }
-      }, [drawing, svgPoint, clampWedge, activeTool, shapeStart, snapToMirror, dragState, history, historyStep, selectionBox, panState]);
+      }, [drawing, svgPoint, clampWedge, activeTool, shapeStart, snapToMirror, dragState, history, historyStep, selectionBox, panState, applyEraser]);
 
       const onMouseUp = useCallback(() => {
         if (panState) { setPanState(null); return; }
         if (dragState) { setDragState(null); return; }
 
         if (activeTool === 'line' || activeTool === 'arc') return;
+
+        if (activeTool === 'eraser') {
+          setDrawing(false);
+          if (erasedStrokes) {
+            commitStroke(null, erasedStrokes);
+            setErasedStrokes(null);
+          }
+          return;
+        }
 
         if (activeTool === 'select' && selectionBox) {
           const minX = Math.min(selectionBox.start.x, selectionBox.end.x) - 5;
@@ -987,7 +1078,7 @@
         }
         setCurrentStroke(null);
         setShapeStart(null);
-      }, [drawing, currentStroke, commitStroke, dragState, activeTool, selectionBox, strokes, designShear, outerR, radialSymmetry, spokeCount, symmetry, panState]);
+      }, [drawing, currentStroke, commitStroke, dragState, activeTool, selectionBox, strokes, designShear, outerR, radialSymmetry, spokeCount, symmetry, panState, erasedStrokes]);
 
       const onWheel = useCallback((e) => {
         e.preventDefault();
@@ -1033,6 +1124,37 @@
         } else if (format === 'dwg') {
           alert("DWG export requires server-side processing. Use DXF for now.");
           return;
+        } else if (format === 'png' || format === 'jpeg') {
+          const svg = svgRef.current; if (!svg) return;
+          const src = new XMLSerializer().serializeToString(svg);
+          const svgBlob = new Blob([src], {type: 'image/svg+xml;charset=utf-8'});
+          const url = URL.createObjectURL(svgBlob);
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = dimensions.w;
+            canvas.height = dimensions.h;
+            const ctx = canvas.getContext('2d');
+            
+            if (format === 'jpeg') {
+              ctx.fillStyle = '#f0f5fa';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+            
+            ctx.drawImage(img, 0, 0);
+            URL.revokeObjectURL(url);
+            
+            canvas.toBlob((b) => {
+              if (!b) return;
+              const a = document.createElement('a');
+              a.href = URL.createObjectURL(b);
+              a.download = `wheel_${spokeCount}x${pcd}_${wheelDiam}in.${format === 'jpeg' ? 'jpg' : 'png'}`;
+              a.click();
+              URL.revokeObjectURL(a.href);
+            }, `image/${format}`, 0.95);
+          };
+          img.src = url;
+          return;
         }
         if (!blob) return;
 
@@ -1050,7 +1172,7 @@
         return `M0,0 L${x1},${y1} A${outerR},${outerR} 0 ${lg},1 ${x2},${y2} Z`;
       }, [wedgeDeg, outerR]);
 
-      const allStrokes = drawing && currentStroke ? [...strokes, currentStroke] : strokes;
+      const allStrokes = (activeTool === 'eraser' && erasedStrokes) ? erasedStrokes : (drawing && currentStroke ? [...strokes, currentStroke] : strokes);
       const selectedStroke = strokes.find(s => s.id === selectedId);
 
       return (
@@ -1101,7 +1223,14 @@
                   </>
                 )}
 
-                {activeTool !== 'freehand' && activeTool !== 'select' && activeTool !== 'fill' && activeTool !== 'line' && activeTool !== 'arc' && (
+                {activeTool === 'eraser' && (
+                  <>
+                    <SecHead>Eraser</SecHead>
+                    <Slider label="Eraser Size" value={eraserSize} min={5} max={100} unit="px" onChange={setEraserSize} />
+                  </>
+                )}
+
+                {activeTool !== 'freehand' && activeTool !== 'select' && activeTool !== 'fill' && activeTool !== 'line' && activeTool !== 'arc' && activeTool !== 'eraser' && (
                   <>
                     <SecHead>Shape Properties</SecHead>
                     <Toggle label="Snap to Mirror" value={snapToMirror} onChange={setSnapToMirror} desc="Locks shape X-coord to center axis" />
@@ -1164,9 +1293,11 @@
                 <Toggle label="Active Wedge (W)" value={showWedge} onChange={setShowWedge} />
 
                 <SecHead>Export & Tools</SecHead>
-                <div className="flex gap-2 mb-2">
-                  <button onClick={() => exportFormat('svg')} className="flex-1 py-2 rounded-xl text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-700 shadow-lg transition-all">SVG</button>
-                  <button onClick={() => exportFormat('dxf')} className="flex-1 py-2 rounded-xl text-xs font-bold text-cyan-600 bg-white border border-slate-200 hover:border-cyan-400 transition-all" title="Export true CAD geometry">DXF</button>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <button onClick={() => exportFormat('svg')} className="py-2 rounded-xl text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-700 shadow-lg transition-all">SVG</button>
+                  <button onClick={() => exportFormat('dxf')} className="py-2 rounded-xl text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-700 shadow-lg transition-all" title="Export true CAD geometry">DXF</button>
+                  <button onClick={() => exportFormat('png')} className="py-2 rounded-xl text-xs font-bold text-cyan-600 bg-white border border-slate-200 hover:border-cyan-400 transition-all">PNG</button>
+                  <button onClick={() => exportFormat('jpeg')} className="py-2 rounded-xl text-xs font-bold text-cyan-600 bg-white border border-slate-200 hover:border-cyan-400 transition-all">JPEG</button>
                 </div>
                 <button onClick={clearCanvas} className="w-full mt-4 mb-8 py-2.5 px-4 rounded-xl text-sm font-bold text-red-500 bg-white border border-red-100 hover:bg-red-50 hover:border-red-200 transition-all">✕ CLEAR CANVAS</button>
               </div>
@@ -1184,7 +1315,7 @@
             <svg
               ref={svgRef} width="100%" height="100%" viewBox={`${-dimensions.w / 2} ${-dimensions.h / 2} ${dimensions.w} ${dimensions.h}`}
               style={{ display: 'block', touchAction: 'none' }} className="canvas-cursor select-none"
-              onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+              onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={(e) => { setCursorPt(null); onMouseUp(e); }}
               onTouchStart={onMouseDown} onTouchMove={onMouseMove} onTouchEnd={onMouseUp} onTouchCancel={onMouseUp}
             >
               <Defs />
@@ -1256,6 +1387,10 @@
                     ))}
                     {selectedStroke.pts?.length > 0 && <circle cx={selectedStroke.cx || selectedStroke.pts[0].x} cy={selectedStroke.cy || selectedStroke.pts[0].y} r={8 / camera.zoom} fill="#fbbf24" cursor="move" onMouseDown={(e) => startDrag(e, 'move')} />}
                   </g>
+                )}
+
+                {activeTool === 'eraser' && cursorPt && (
+                  <circle cx={cursorPt.x} cy={cursorPt.y} r={eraserSize} fill="none" stroke="#ef4444" strokeWidth={1.5 / camera.zoom} opacity="0.8" pointerEvents="none" />
                 )}
 
                 <circle cx="0" cy="0" r={innerR + 6} fill="#fff" stroke="#cbd5e1" strokeWidth="1.5" />
