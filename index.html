@@ -11,11 +11,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <style>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
+    <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet"><style> :root {
       --bg-main: #f0f5fa;
       --panel-bg: rgba(255, 255, 255, 0.75);
       --accent: #00818a;
@@ -39,7 +35,11 @@
       color: var(--text-main);
     }
 
-    h1, h2, h3, .badge, .title-font {
+    h1,
+    h2,
+    h3,
+    .badge,
+    .title-font {
       font-family: 'Panchang', 'Outfit', sans-serif;
       font-weight: 700;
     }
@@ -106,7 +106,9 @@
       cursor: crosshair;
     }
 
-    input, select, button {
+    input,
+    select,
+    button {
       font-family: 'Michroma', sans-serif;
     }
 
@@ -156,8 +158,11 @@
 
     .glossy-overlay {
       position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: linear-gradient(135deg, rgba(255,255,255,0.4) 0%, transparent 50%, rgba(255,255,255,0.1) 100%);
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, transparent 50%, rgba(255, 255, 255, 0.1) 100%);
       pointer-events: none;
     }
 
@@ -173,26 +178,60 @@
   <script type="text/babel">
     const { useState, useRef, useCallback, useEffect, useMemo } = React;
 
-    function catmullRomPath(pts) {
+    function catmullRomData(pts) {
       if (pts.length < 2) return '';
-      if (pts.length === 2) return `M${pts[0].x},${pts[0].y} L${pts[1].x},${pts[1].y}`;
-      let d = `M${pts[0].x},${pts[0].y}`;
+      let d = '';
       for (let i = 0; i < pts.length - 1; i++) {
         const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
         const cp1x = p1.x + (p2.x - p0.x) / 6, cp1y = p1.y + (p2.y - p0.y) / 6;
         const cp2x = p2.x - (p3.x - p1.x) / 6, cp2y = p2.y - (p3.y - p1.y) / 6;
-        d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+        d += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
       }
       return d;
     }
 
+    function catmullRomPath(pts) {
+      if (pts.length < 2) return '';
+      if (pts.length === 2) return `M ${pts[0].x},${pts[0].y} L ${pts[1].x},${pts[1].y}`;
+      return `M ${pts[0].x},${pts[0].y}` + catmullRomData(pts);
+    }
+
+    function generateVariableWidthRibbon(pts, baseWidth) {
+      if (pts.length < 2) return '';
+      const leftSide = [];
+      const rightSide = [];
+
+      for (let i = 0; i < pts.length; i++) {
+        const p1 = pts[Math.max(0, i - 2)];
+        const p2 = pts[i];
+        const p3 = pts[Math.min(pts.length - 1, i + 2)];
+
+        const dx = p3.x - p1.x;
+        const dy = p3.y - p1.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = -dy / len;
+        const ny = dx / len;
+
+        const w = (baseWidth * (pts[i].p || 0.5));
+        leftSide.push({ x: p2.x + nx * w, y: p2.y + ny * w });
+        rightSide.push({ x: p2.x - nx * w, y: p2.y - ny * w });
+      }
+
+      // Combine two smoothed splines into one closed ribbon shape
+      return `M ${leftSide[0].x},${leftSide[0].y}` +
+        catmullRomData(leftSide) +
+        ` L ${rightSide[rightSide.length - 1].x},${rightSide[rightSide.length - 1].y}` +
+        catmullRomData(rightSide.reverse()) +
+        ' Z';
+    }
+
     function rotatePt(pt, deg) {
       const rad = deg * Math.PI / 180, c = Math.cos(rad), s = Math.sin(rad);
-      return { x: pt.x * c - pt.y * s, y: pt.x * s + pt.y * c };
+      return { x: pt.x * c - pt.y * s, y: pt.x * s + pt.y * c, p: pt.p };
     }
 
     function mirrorPoint(pt) {
-      return { x: pt.x, y: -pt.y };
+      return { x: pt.x, y: -pt.y, p: pt.p };
     }
 
     function getRoundedPolyPoints(points, r, steps = 8) {
@@ -256,7 +295,7 @@
       if (shear === 0) return p;
       const rad = Math.hypot(p.x, p.y);
       const a = Math.atan2(p.y, p.x) + (shear / 100) * (rad / R) * (Math.PI / 2);
-      return { x: rad * Math.cos(a), y: rad * Math.sin(a) };
+      return { x: rad * Math.cos(a), y: rad * Math.sin(a), p: p.p };
     }
 
     function generateShapePts(shape) {
@@ -346,7 +385,7 @@
           for (let j = 0; j < rotPts.length - 1; j++) addLine(rotPts[j], rotPts[j + 1]);
           if (isClosed) addLine(rotPts[rotPts.length - 1], rotPts[0]);
 
-          if (symmetry) {
+          if (stroke.symmetry) {
             const mirPts = rotPts.map(p => mirrorPoint(p));
             for (let j = 0; j < mirPts.length - 1; j++) addLine(mirPts[j], mirPts[j + 1]);
             if (isClosed) addLine(mirPts[mirPts.length - 1], mirPts[0]);
@@ -384,7 +423,7 @@
       );
     }
 
-    function RenderStroke({ stroke, pts, color, width, filter, isSelected, onSelect, designShear, outerR, interactive }) {
+    function RenderStroke({ stroke, pts, color, width, filter, isSelected, onSelect, designShear, outerR, interactive, tabletMode }) {
       if (!pts || pts.length < 2) return null;
       const sheared = pts.map(p => shearPt(p, designShear, outerR));
       let d = '';
@@ -402,6 +441,18 @@
       const hasDefaultFill = (stroke.type !== 'freehand' && stroke.type !== 'line' && stroke.type !== 'arc') || (stroke.type === 'freehand' && closed);
       const fill = stroke.fillColor || (hasDefaultFill ? `${color}11` : "none");
 
+      if (tabletMode && stroke.type === 'freehand' && !stroke.fillColor) {
+        const ribbonD = generateVariableWidthRibbon(sheared, width);
+        return (
+          <path
+            d={ribbonD} fill={isSelected ? "#00818a" : color} stroke="none" filter={filter}
+            onMouseDown={interactive ? onSelect : undefined}
+            className={interactive && onSelect ? "cursor-pointer" : ""}
+            pointerEvents={interactive ? "all" : "none"}
+          />
+        );
+      }
+
       return (
         <path
           d={d} fill={fill}
@@ -414,7 +465,7 @@
       );
     }
 
-    function RadialStrokes({ strokes, spokeCount, radialSymmetry, color, width, symmetry, wedgeDeg, activeTool, selectedId, onShapeClick, designShear, outerR }) {
+    function RadialStrokes({ strokes, spokeCount, radialSymmetry, color, width, symmetry, wedgeDeg, activeTool, selectedId, onShapeClick, designShear, outerR, tabletMode }) {
       const count = radialSymmetry ? spokeCount : 1;
       const interactive = activeTool === 'select' || activeTool === 'fill';
       return (
@@ -425,14 +476,14 @@
                 const isSelected = stroke.id === selectedId;
                 const handleSelect = (e) => { e.stopPropagation(); onShapeClick(stroke.id); };
                 const strokePts = generateShapePts(stroke);
-                const mirroredPts = symmetry ? strokePts.map(p => mirrorPoint(p)) : null;
+                const mirroredPts = stroke.symmetry ? strokePts.map(p => mirrorPoint(p)) : null;
 
                 return (
                   <g key={stroke.id}>
                     <RenderStroke stroke={stroke} pts={strokePts} color={color} width={width} filter="url(#softShadow)"
-                      isSelected={isSelected} onSelect={handleSelect} designShear={designShear} outerR={outerR} interactive={interactive} />
+                      isSelected={isSelected} onSelect={handleSelect} designShear={designShear} outerR={outerR} interactive={interactive} tabletMode={tabletMode} />
                     {mirroredPts && <RenderStroke stroke={{ ...stroke, id: stroke.id + '_m' }} pts={mirroredPts} color={color} width={width} filter="url(#softShadow)"
-                      designShear={designShear} outerR={outerR} interactive={interactive} />}
+                      designShear={designShear} outerR={outerR} interactive={interactive} tabletMode={tabletMode} />}
                   </g>
                 );
               })}
@@ -473,22 +524,22 @@
       );
     }
 
-    function Slider({ label, value, min, max, step = 1, unit = '', onChange, allowText = false }) {
+    function Slider({ label, value, min, max, step = 1, unit = '', onChange, allowText = false, disabled = false }) {
       const disp = Number.isInteger(value) ? value : value.toFixed(1);
       return (
-        <div className="mb-4">
+        <div className={`mb-4 transition-opacity duration-300 ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
           <div className="flex justify-between items-center mb-1">
             <span className="badge text-slate-500 uppercase tracking-widest">{label}</span>
             {allowText ? (
               <div className="flex items-center gap-1">
-                <input type="number" step={step} value={Number(value).toString()} onChange={e => onChange(parseFloat(e.target.value) || 0)} className="bg-white border border-slate-200 focus:border-cyan-500 rounded px-1.5 py-0.5 text-cyan-600 font-bold text-xs text-right w-16 outline-none transition-colors" />
+                <input type="number" step={step} value={Number(value).toString()} onChange={e => onChange(parseFloat(e.target.value) || 0)} disabled={disabled} className="bg-white border border-slate-200 focus:border-cyan-500 rounded px-1.5 py-0.5 text-cyan-600 font-bold text-xs text-right w-16 outline-none transition-colors" />
                 {unit && <span className="text-xs text-slate-400 font-bold">{unit}</span>}
               </div>
             ) : (
               <span className="text-xs text-cyan-600 font-bold">{disp}{unit}</span>
             )}
           </div>
-          <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(parseFloat(e.target.value))} />
+          <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(parseFloat(e.target.value))} disabled={disabled} />
         </div>
       );
     }
@@ -554,16 +605,16 @@
     }
 
     const TOOLS = [
-      { id: 'select', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>, label: 'Select' },
-      { id: 'freehand', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L4 2l3.5 12.5L13 16l5-3z"/></svg>, label: 'Pen' },
-      { id: 'eraser', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>, label: 'Eraser' },
-      { id: 'line', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 19L19 5"/></svg>, label: 'Line' },
-      { id: 'arc', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 19c6-12 12-12 18 0"/></svg>, label: 'Spline' },
-      { id: 'circle', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/></svg>, label: 'Circle' },
-      { id: 'square', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>, label: 'Square' },
-      { id: 'triangle', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 20h18L12 4z"/></svg>, label: 'Triangle' },
-      { id: 'polygon', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l9 6.5V15.5L12 22l-9-6.5V8.5z"/></svg>, label: 'Polygon' },
-      { id: 'fill', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m19 11-9-9-7 7 9 9z"/><path d="m5 7 5 5"/><path d="m19 11-4-4"/><path d="M22 22a2 2 0 0 1-2-2c0-1.66-2-3-2-3s-2 1.34-2 3a2 2 0 0 1-4 0c0-1.66-2-3-2-3s-2 1.34-2 3a2 2 0 0 1-2 2"/></svg>, label: 'Fill' }
+      { id: 'select', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /><path d="m13 13 6 6" /></svg>, label: 'Select' },
+      { id: 'freehand', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L4 2l3.5 12.5L13 16l5-3z" /></svg>, label: 'Pen' },
+      { id: 'eraser', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" /><path d="M22 21H7" /><path d="m5 11 9 9" /></svg>, label: 'Eraser' },
+      { id: 'line', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 19L19 5" /></svg>, label: 'Line' },
+      { id: 'arc', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 19c6-12 12-12 18 0" /></svg>, label: 'Spline' },
+      { id: 'circle', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /></svg>, label: 'Circle' },
+      { id: 'square', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /></svg>, label: 'Square' },
+      { id: 'triangle', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 20h18L12 4z" /></svg>, label: 'Triangle' },
+      { id: 'polygon', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l9 6.5V15.5L12 22l-9-6.5V8.5z" /></svg>, label: 'Polygon' },
+      { id: 'fill', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m19 11-9-9-7 7 9 9z" /><path d="m5 7 5 5" /><path d="m19 11-4-4" /><path d="M22 22a2 2 0 0 1-2-2c0-1.66-2-3-2-3s-2 1.34-2 3a2 2 0 0 1-4 0c0-1.66-2-3-2-3s-2 1.34-2 3a2 2 0 0 1-2 2" /></svg>, label: 'Fill' }
     ];
 
     function App() {
@@ -613,12 +664,65 @@
       const [symmetry, setSymmetry] = useState(true);
       const [showGuides, setShowGuides] = useState(true);
       const [showBolts, setShowBolts] = useState(true);
-      const [showWedge, setShowWedge] = useState(true);
+      const [showWedge, setShowWedge] = useState(false);
 
       const [camera, setCamera] = useState({ x: 0, y: 0, zoom: 1 });
+      const [tabletMode, setTabletMode] = useState(false);
+
+      const getTimestamp = () => {
+        const now = new Date();
+        const pad = (n) => n.toString().padStart(2, '0');
+        return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+      };
 
       const stateRef = useRef({ drawing, currentStroke, activeTool });
       useEffect(() => { stateRef.current = { drawing, currentStroke, activeTool }; }, [drawing, currentStroke, activeTool]);
+
+      // Persistence: Load settings on mount
+      useEffect(() => {
+        const saved = localStorage.getItem('seifi_wheel_settings');
+        if (saved) {
+          try {
+            const s = JSON.parse(saved);
+            if (s.wheelDiam !== undefined) setWheelDiam(s.wheelDiam);
+            if (s.spokeCount !== undefined) setSpokeCount(s.spokeCount);
+            if (s.spokeThick !== undefined) setSpokeThick(s.spokeThick);
+            if (s.designShear !== undefined) setDesignShear(s.designShear);
+            if (s.hubBore !== undefined) setHubBore(s.hubBore);
+            if (s.pcd !== undefined) setPcd(s.pcd);
+            if (s.lugCount !== undefined) setLugCount(s.lugCount);
+            if (s.lugHoleMm !== undefined) setLugHoleMm(s.lugHoleMm);
+            if (s.capMm !== undefined) setCapMm(s.capMm);
+            if (s.radialSymmetry !== undefined) setRadialSymmetry(s.radialSymmetry);
+            if (s.symmetry !== undefined) setSymmetry(s.symmetry);
+            if (s.showGuides !== undefined) setShowGuides(s.showGuides);
+            if (s.showBolts !== undefined) setShowBolts(s.showBolts);
+            if (s.showWedge !== undefined) setShowWedge(s.showWedge);
+            if (s.showGrid !== undefined) setShowGrid(s.showGrid);
+            if (s.snapToGrid !== undefined) setSnapToGrid(s.snapToGrid);
+            if (s.gridSizeMm !== undefined) setGridSizeMm(s.gridSizeMm);
+            if (s.tabletMode !== undefined) setTabletMode(s.tabletMode);
+            if (s.fillColor !== undefined) setFillColor(s.fillColor);
+            if (s.cornerRadius !== undefined) setCornerRadius(s.cornerRadius);
+            if (s.polygonSides !== undefined) setPolygonSides(s.polygonSides);
+            if (s.eraserSize !== undefined) setEraserSize(s.eraserSize);
+          } catch (e) { console.error("Load failed", e); }
+        }
+      }, []);
+
+      // Persistence: Save settings on change
+      useEffect(() => {
+        const settings = {
+          wheelDiam, spokeCount, spokeThick, designShear, hubBore, pcd, lugCount,
+          lugHoleMm, capMm, radialSymmetry, symmetry, showGuides, showBolts,
+          showWedge, showGrid, snapToGrid, gridSizeMm, tabletMode, fillColor,
+          cornerRadius, polygonSides, eraserSize
+        };
+        localStorage.setItem('seifi_wheel_settings', JSON.stringify(settings));
+      }, [wheelDiam, spokeCount, spokeThick, designShear, hubBore, pcd, lugCount,
+        lugHoleMm, capMm, radialSymmetry, symmetry, showGuides, showBolts,
+        showWedge, showGrid, snapToGrid, gridSizeMm, tabletMode, fillColor,
+        cornerRadius, polygonSides, eraserSize]);
 
       const isCenterLock = lugCount === 1;
       const size = useMemo(() => Math.min(dimensions.w, dimensions.h) * 0.95, [dimensions]);
@@ -744,8 +848,12 @@
       const svgPoint = useCallback((e) => {
         const svg = svgRef.current; if (!svg) return null;
         const rect = svg.getBoundingClientRect();
-        const cx = e.touches ? e.touches[0].clientX : e.clientX;
-        const cy = e.touches ? e.touches[0].clientY : e.clientY;
+
+        // Handle both pointer events and touch events
+        const cx = e.clientX ?? (e.touches?.[0]?.clientX);
+        const cy = e.clientY ?? (e.touches?.[0]?.clientY);
+
+        if (cx === undefined || cy === undefined) return null;
 
         let screenX = (cx - rect.left) - dimensions.w / 2;
         let screenY = (cy - rect.top) - dimensions.h / 2;
@@ -829,18 +937,18 @@
             if (!pts || pts.length === 0) return;
 
             let isErased = pts.map(p => {
-               let pSheared = shearPt(p, designShear, outerR);
-               return Math.min(...erasePts.map(ep => Math.hypot(pSheared.x - ep.x, pSheared.y - ep.y))) < eraserSize;
+              let pSheared = shearPt(p, designShear, outerR);
+              return Math.min(...erasePts.map(ep => Math.hypot(pSheared.x - ep.x, pSheared.y - ep.y))) < eraserSize;
             });
 
             if (!isErased.includes(true)) {
-               newStrokes.push(stroke);
-               return;
+              newStrokes.push(stroke);
+              return;
             }
 
             if (!isErased.includes(false)) {
-               changed = true;
-               return;
+              changed = true;
+              return;
             }
 
             changed = true;
@@ -849,34 +957,35 @@
 
             let startIdx = 0;
             if (isClosed) {
-               startIdx = isErased.indexOf(true);
+              startIdx = isErased.indexOf(true);
             }
 
             let currentPts = [];
             for (let i = 0; i < pts.length; i++) {
-               let idx = (startIdx + i) % pts.length;
-               if (isErased[idx]) {
-                  if (currentPts.length > 1) {
-                     newStrokes.push({ ...stroke, id: stroke.id + '_' + idx + '_' + Date.now(), type: 'freehand', pts: currentPts, shapeType: undefined, fillColor: undefined });
-                  }
-                  currentPts = [];
-               } else {
-                  currentPts.push(pts[idx]);
-               }
+              let idx = (startIdx + i) % pts.length;
+              if (isErased[idx]) {
+                if (currentPts.length > 1) {
+                  newStrokes.push({ ...stroke, id: stroke.id + '_' + idx + '_' + Date.now(), type: 'freehand', pts: currentPts, shapeType: undefined, fillColor: undefined });
+                }
+                currentPts = [];
+              } else {
+                currentPts.push(pts[idx]);
+              }
             }
             if (currentPts.length > 1) {
-               newStrokes.push({ ...stroke, id: stroke.id + '_end_' + Date.now(), type: 'freehand', pts: currentPts, shapeType: undefined, fillColor: undefined });
+              newStrokes.push({ ...stroke, id: stroke.id + '_end_' + Date.now(), type: 'freehand', pts: currentPts, shapeType: undefined, fillColor: undefined });
             }
           });
-          
+
           return changed ? newStrokes : prev;
         });
       }, [strokes, radialSymmetry, spokeCount, symmetry, designShear, outerR, eraserSize]);
 
       const onMouseDown = useCallback((e) => {
+        if (e.pointerType === 'pen' && !tabletMode) setTabletMode(true);
         if (e.type.startsWith('mouse') && e.button !== 0 && e.button !== 1) return;
 
-        if (e.button === 1 || (e.touches && e.touches.length === 2)) {
+        if (e.button === 1 || (e.pointerType === 'touch' && e.isPrimary === false)) {
           e.preventDefault();
           const cx = e.touches ? (e.touches[0].clientX + e.touches[1].clientX) / 2 : e.clientX;
           const cy = e.touches ? (e.touches[0].clientY + e.touches[1].clientY) / 2 : e.clientY;
@@ -910,7 +1019,7 @@
         if (isNodeTool) {
           if (!drawing) {
             setDrawing(true);
-            setCurrentStroke({ id: Date.now(), type: activeTool, pts: [c, c], cx: c.x, cy: c.y });
+            setCurrentStroke({ id: Date.now(), type: activeTool, pts: [c, c], cx: c.x, cy: c.y, symmetry });
           } else {
             setCurrentStroke(prev => {
               const newPts = [...prev.pts, c];
@@ -923,10 +1032,10 @@
         setDrawing(true);
 
         if (activeTool === 'freehand') {
-          setCurrentStroke({ id: Date.now(), type: 'freehand', pts: [c] });
+          setCurrentStroke({ id: Date.now(), type: 'freehand', pts: [{ ...c, p: e.pressure || 0.5 }], symmetry });
         } else {
           setShapeStart(c);
-          setCurrentStroke({ id: Date.now(), type: 'shape', shapeType: activeTool, cx: c.x, cy: c.y, w: 0, h: 0, angle: 0, r: cornerRadius, sides: activeTool === 'polygon' ? polygonSides : 0 });
+          setCurrentStroke({ id: Date.now(), type: 'shape', shapeType: activeTool, cx: c.x, cy: c.y, w: 0, h: 0, angle: 0, r: cornerRadius, sides: activeTool === 'polygon' ? polygonSides : 0, symmetry });
         }
       }, [svgPoint, clampWedge, activeTool, cornerRadius, drawing, camera, strokes, applyEraser]);
 
@@ -1017,8 +1126,19 @@
         if (activeTool === 'freehand') {
           setCurrentStroke(prev => {
             const last = prev.pts[prev.pts.length - 1];
-            if (last && Math.hypot(c.x - last.x, c.y - last.y) < 1.5) return prev;
-            return { ...prev, pts: [...prev.pts, c] };
+            const pressure = e.pressure || 0.5;
+
+            // Exponential smoothing for coordinate and pressure jitter
+            const weight = 0.45; // Balance between smoothness and responsiveness
+            let smoothedPt = { ...c, p: pressure };
+            if (last) {
+              smoothedPt.x = last.x + (c.x - last.x) * weight;
+              smoothedPt.y = last.y + (c.y - last.y) * weight;
+              smoothedPt.p = last.p + (pressure - last.p) * weight;
+            }
+
+            if (last && Math.hypot(smoothedPt.x - last.x, smoothedPt.y - last.y) < 0.8) return prev;
+            return { ...prev, pts: [...prev.pts, smoothedPt] };
           });
         } else {
           setCurrentStroke(prev => {
@@ -1132,20 +1252,20 @@
 
       const exportFormat = (format) => {
         let blob;
-        
+
         const getCleanSVG = () => {
           const svgClone = svgRef.current.cloneNode(true);
           svgClone.querySelectorAll('.ui-element, .bg-element').forEach(el => el.remove());
           svgClone.querySelectorAll('[filter]').forEach(el => el.removeAttribute('filter'));
           const mainG = svgClone.querySelector('#main-group');
           if (mainG) mainG.setAttribute('transform', 'rotate(-90)');
-          
+
           const pad = 20;
           const dim = (outerR + pad) * 2;
           svgClone.setAttribute('viewBox', `${-(outerR + pad)} ${-(outerR + pad)} ${dim} ${dim}`);
           svgClone.setAttribute('width', '2000');
           svgClone.setAttribute('height', '2000');
-          
+
           return new XMLSerializer().serializeToString(svgClone);
         };
 
@@ -1160,7 +1280,7 @@
           return;
         } else if (format === 'png' || format === 'jpeg') {
           const src = getCleanSVG();
-          const svgBlob = new Blob([src], {type: 'image/svg+xml;charset=utf-8'});
+          const svgBlob = new Blob([src], { type: 'image/svg+xml;charset=utf-8' });
           const url = URL.createObjectURL(svgBlob);
           const img = new Image();
           img.onload = () => {
@@ -1168,20 +1288,21 @@
             canvas.width = 2000;
             canvas.height = 2000;
             const ctx = canvas.getContext('2d');
-            
+
             if (format === 'jpeg') {
               ctx.fillStyle = '#ffffff';
               ctx.fillRect(0, 0, canvas.width, canvas.height);
             }
-            
+
             ctx.drawImage(img, 0, 0);
             URL.revokeObjectURL(url);
-            
+
             canvas.toBlob((b) => {
               if (!b) return;
               const a = document.createElement('a');
+              const ts = getTimestamp();
               a.href = URL.createObjectURL(b);
-              a.download = `wheel_${spokeCount}x${pcd}_${wheelDiam}in.${format === 'jpeg' ? 'jpg' : 'png'}`;
+              a.download = `wheel_${spokeCount}x${pcd}_${ts}.${format === 'jpeg' ? 'jpg' : 'png'}`;
               a.click();
               URL.revokeObjectURL(a.href);
             }, `image/${format}`, 1.0);
@@ -1193,7 +1314,8 @@
 
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = `wheel_${spokeCount}x${pcd}_${wheelDiam}in.${format}`;
+        const ts = getTimestamp();
+        a.href = url; a.download = `wheel_${spokeCount}x${pcd}_${ts}.${format}`;
         a.click(); URL.revokeObjectURL(url);
       };
 
@@ -1213,7 +1335,7 @@
 
           {/* COLLAPSED LOGO (FIXED ON TOOLBAR) */}
           <div className={`absolute top-7 left-5 z-[70] pointer-events-none transition-all duration-500 ${!isSidebarOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-             <img src="seifi_logo_small.png?v=2" alt="Checkered Flag" className="h-10 object-contain" />
+            <img src="seifi_logo_small.png?v=2" alt="Checkered Flag" className="h-10 object-contain" />
           </div>
 
           {/* TOOLBAR */}
@@ -1242,223 +1364,230 @@
               <div className="p-6 pt-10 border-b border-slate-100">
                 <img src="seifi_logo_full.png?v=2" alt="SEIFI Competition Alloys" className="h-20 object-contain mb-6 -ml-1" />
                 <div className="text-slate-900 font-bold text-sm leading-tight uppercase tracking-tight title-font">Radial Symmetry Visualizer</div>
-                <div className="text-slate-400 text-[9px] font-bold uppercase tracking-widest mt-1">Version 1.0</div>
-              </div>
-              <div className="p-6 flex-1">
-                {activeTool === 'fill' && (
-                  <>
-                    <SecHead>Fill Tool</SecHead>
-                    <div className="flex items-center gap-3 mb-4 mt-2 p-3 bg-white rounded-xl border border-slate-100 shadow-sm">
-                      <input type="color" value={fillColor} onChange={e => setFillColor(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer bg-transparent border-0 p-0 outline-none" />
-                      <span className="font-bold text-sm text-cyan-600">{fillColor.toUpperCase()}</span>
-                    </div>
-                    <div className="text-[11px] text-slate-400 font-semibold px-1">Click any closed shape to apply color fill.</div>
-                  </>
-                )}
-
-                {activeTool === 'eraser' && (
-                  <>
-                    <SecHead>Eraser</SecHead>
-                    <Slider label="Eraser Size" value={eraserSize} min={5} max={100} unit="px" onChange={setEraserSize} />
-                  </>
-                )}
-
-                {activeTool !== 'freehand' && activeTool !== 'select' && activeTool !== 'fill' && activeTool !== 'line' && activeTool !== 'arc' && activeTool !== 'eraser' && (
-                  <>
-                    <SecHead>Shape Properties</SecHead>
-                    <Toggle label="Snap to Mirror" value={snapToMirror} onChange={setSnapToMirror} desc="Locks shape X-coord to center axis" />
-                    {activeTool === 'polygon' && <Slider label="Sides" value={polygonSides} min={3} max={20} unit="" onChange={setPolygonSides} />}
-                    {activeTool !== 'circle' && <Slider label="Corner Radius" value={cornerRadius} min={0} max={50} unit="px" onChange={setCornerRadius} />}
-                  </>
-                )}
-
-                {activeTool === 'select' && selectedStroke && selectedStroke.type === 'shape' && (
-                  <>
-                    <SecHead>Edit Shape</SecHead>
-                    {selectedStroke.shapeType === 'polygon' && (
-                      <Slider label="Sides" value={selectedStroke.sides || 5} min={3} max={20} unit="" onChange={(val) => {
-                        const step = [...history[historyStep]];
-                        const idx = step.findIndex(s => s.id === selectedId);
-                        step[idx] = { ...step[idx], sides: val };
-                        const newHistory = [...history]; newHistory[historyStep] = step; setHistory(newHistory);
-                      }} />
-                    )}
-                    {selectedStroke.shapeType !== 'circle' && (
-                      <Slider label="Corner Radius" value={selectedStroke.r || 0} min={0} max={50} unit="px" onChange={(val) => {
-                        const step = [...history[historyStep]];
-                        const idx = step.findIndex(s => s.id === selectedId);
-                        step[idx] = { ...step[idx], r: val };
-                        const newHistory = [...history]; newHistory[historyStep] = step; setHistory(newHistory);
-                      }} />
-                    )}
-                    <button onClick={() => {
-                      const step = [...history[historyStep]];
-                      const idx = step.findIndex(s => s.id === selectedId);
-                      step[idx] = { ...step[idx], angle: step[idx].angle + 90 };
-                      const newHistory = [...history]; newHistory[historyStep] = step; setHistory(newHistory);
-                    }} className="w-full mt-2 py-2 px-4 rounded-xl text-xs font-bold text-cyan-600 bg-white border border-slate-200 hover:border-cyan-400 hover:shadow-md transition-all flex items-center justify-center gap-2">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path></svg> ROTATE 90°
-                    </button>
-                  </>
-                )}
-
-                <SecHead>Geometry</SecHead>
-                <Slider label="Spoke Count" value={spokeCount} min={3} max={20} onChange={setSpokeCount} />
-                <Slider label="Stroke Thickness" value={spokeThick} min={0.5} max={8} step={0.1} unit="px" allowText={true} onChange={setSpokeThick} />
-                <Slider label="Design Shear" value={designShear} min={-100} max={100} step={10} unit="%" onChange={setDesignShear} />
-
-                <SecHead>Parameters</SecHead>
-                <Slider label="Wheel Diameter" value={wheelDiam} min={13} max={24} step={0.5} unit="in" allowText={true} onChange={setWheelDiam} />
-                <DiscreteSlider label="PCD" value={pcd} options={PCD_OPTIONS} unit="mm" onChange={setPcd} />
-                <ButtonGroup label="Lug Count" value={lugCount} options={[{ label: 'C/L', val: 1 }, { label: '4', val: 4 }, { label: '5', val: 5 }, { label: '6', val: 6 }, { label: '8', val: 8 }, { label: '10', val: 10 }]} onChange={setLugCount} />
-                {!isCenterLock && <Slider label="Lug Hole Ø" value={lugHoleMm} min={13} max={33} step={0.1} unit="mm" allowText={true} onChange={setLugHoleMm} />}
-                <Slider label="Center Hub Bore" value={hubBore} min={50} max={100} step={0.1} unit="mm" allowText={true} onChange={setHubBore} />
-                <Slider label="Center Cap Ø" value={capMm} min={40} max={100} step={0.1} unit="mm" allowText={true} onChange={setCapMm} />
-
-                <SecHead>Options</SecHead>
-                <Toggle label="Radial Symmetry" value={radialSymmetry} onChange={setRadialSymmetry} />
-                <Toggle label="Mirror Mode" value={symmetry} onChange={setSymmetry} />
-                <Toggle label="Guide Rings (G)" value={showGuides} onChange={setShowGuides} />
-                <Toggle label="Show Grid" value={showGrid} onChange={setShowGrid} />
-                <Toggle label="Snap to Grid" value={snapToGrid} onChange={setSnapToGrid} />
-                {snapToGrid && <Slider label="Grid Spacing" value={gridSizeMm} min={1} max={50} step={1} unit="mm" allowText={true} onChange={setGridSizeMm} />}
-                <Toggle label="Bolt Pattern" value={showBolts} onChange={setShowBolts} />
-                <Toggle label="Active Wedge (W)" value={showWedge} onChange={setShowWedge} />
-
-                <SecHead>Export & Tools</SecHead>
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  <button onClick={() => exportFormat('svg')} className="py-2 rounded-xl text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-700 shadow-lg transition-all">SVG</button>
-                  <button onClick={() => exportFormat('dxf')} className="py-2 rounded-xl text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-700 shadow-lg transition-all" title="Export true CAD geometry">DXF</button>
-                  <button onClick={() => exportFormat('png')} className="py-2 rounded-xl text-xs font-bold text-cyan-600 bg-white border border-slate-200 hover:border-cyan-400 transition-all">PNG</button>
-                  <button onClick={() => exportFormat('jpeg')} className="py-2 rounded-xl text-xs font-bold text-cyan-600 bg-white border border-slate-200 hover:border-cyan-400 transition-all">JPEG</button>
+                <div className="text-slate-400 text-[9px] font-bold uppercase tracking-widest mt-1">Version 1.2/div>
                 </div>
-                <button onClick={clearCanvas} className="w-full mt-4 mb-8 py-2.5 px-4 rounded-xl text-sm font-bold text-red-500 bg-white border border-red-100 hover:bg-red-50 hover:border-red-200 transition-all">✕ CLEAR CANVAS</button>
+                <div className="p-6 flex-1">
+                  {activeTool === 'fill' && (
+                    <>
+                      <SecHead>Fill Tool</SecHead>
+                      <div className="flex items-center gap-3 mb-4 mt-2 p-3 bg-white rounded-xl border border-slate-100 shadow-sm">
+                        <input type="color" value={fillColor} onChange={e => setFillColor(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer bg-transparent border-0 p-0 outline-none" />
+                        <span className="font-bold text-sm text-cyan-600">{fillColor.toUpperCase()}</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 font-semibold px-1">Click any closed shape to apply color fill.</div>
+                    </>
+                  )}
+
+                  {activeTool === 'eraser' && (
+                    <>
+                      <SecHead>Eraser</SecHead>
+                      <Slider label="Eraser Size" value={eraserSize} min={5} max={100} unit="px" onChange={setEraserSize} />
+                    </>
+                  )}
+
+                  {activeTool !== 'freehand' && activeTool !== 'select' && activeTool !== 'fill' && activeTool !== 'line' && activeTool !== 'arc' && activeTool !== 'eraser' && (
+                    <>
+                      <SecHead>Shape Properties</SecHead>
+                      <Toggle label="Snap to Mirror" value={snapToMirror} onChange={setSnapToMirror} desc="Locks shape X-coord to center axis" />
+                      {activeTool === 'polygon' && <Slider label="Sides" value={polygonSides} min={3} max={20} unit="" onChange={setPolygonSides} />}
+                      {activeTool !== 'circle' && <Slider label="Corner Radius" value={cornerRadius} min={0} max={50} unit="px" onChange={setCornerRadius} />}
+                    </>
+                  )}
+
+                  {activeTool === 'select' && selectedStroke && selectedStroke.type === 'shape' && (
+                    <>
+                      <SecHead>Edit Shape</SecHead>
+                      {selectedStroke.shapeType === 'polygon' && (
+                        <Slider label="Sides" value={selectedStroke.sides || 5} min={3} max={20} unit="" onChange={(val) => {
+                          const step = [...history[historyStep]];
+                          const idx = step.findIndex(s => s.id === selectedId);
+                          step[idx] = { ...step[idx], sides: val };
+                          const newHistory = [...history]; newHistory[historyStep] = step; setHistory(newHistory);
+                        }} />
+                      )}
+                      {selectedStroke.shapeType !== 'circle' && (
+                        <Slider label="Corner Radius" value={selectedStroke.r || 0} min={0} max={50} unit="px" onChange={(val) => {
+                          const step = [...history[historyStep]];
+                          const idx = step.findIndex(s => s.id === selectedId);
+                          step[idx] = { ...step[idx], r: val };
+                          const newHistory = [...history]; newHistory[historyStep] = step; setHistory(newHistory);
+                        }} />
+                      )}
+                      <button onClick={() => {
+                        const step = [...history[historyStep]];
+                        const idx = step.findIndex(s => s.id === selectedId);
+                        step[idx] = { ...step[idx], angle: step[idx].angle + 90 };
+                        const newHistory = [...history]; newHistory[historyStep] = step; setHistory(newHistory);
+                      }} className="w-full mt-2 py-2 px-4 rounded-xl text-xs font-bold text-cyan-600 bg-white border border-slate-200 hover:border-cyan-400 hover:shadow-md transition-all flex items-center justify-center gap-2">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path></svg> ROTATE 90°
+                      </button>
+                    </>
+                  )}
+
+                  <SecHead>Geometry</SecHead>
+                  <Slider label="Spoke Count" value={spokeCount} min={3} max={20} onChange={setSpokeCount} />
+                  <Slider label="Stroke Thickness" value={spokeThick} min={0.5} max={8} step={0.1} unit="px" allowText={true} onChange={setSpokeThick} disabled={tabletMode} />
+                  <Slider label="Design Shear" value={designShear} min={-100} max={100} step={10} unit="%" onChange={setDesignShear} />
+
+                  <SecHead>Parameters</SecHead>
+                  <Slider label="Wheel Diameter" value={wheelDiam} min={13} max={24} step={0.5} unit="in" allowText={true} onChange={setWheelDiam} />
+                  <DiscreteSlider label="PCD" value={pcd} options={PCD_OPTIONS} unit="mm" onChange={setPcd} />
+                  <ButtonGroup label="Lug Count" value={lugCount} options={[{ label: 'C/L', val: 1 }, { label: '4', val: 4 }, { label: '5', val: 5 }, { label: '6', val: 6 }, { label: '8', val: 8 }, { label: '10', val: 10 }]} onChange={setLugCount} />
+                  {!isCenterLock && <Slider label="Lug Hole Ø" value={lugHoleMm} min={13} max={33} step={0.1} unit="mm" allowText={true} onChange={setLugHoleMm} />}
+                  <Slider label="Center Hub Bore" value={hubBore} min={50} max={100} step={0.1} unit="mm" allowText={true} onChange={setHubBore} />
+                  <Slider label="Center Cap Ø" value={capMm} min={40} max={100} step={0.1} unit="mm" allowText={true} onChange={setCapMm} />
+
+                  <SecHead>Options</SecHead>
+                  <Toggle label="Radial Symmetry" value={radialSymmetry} onChange={setRadialSymmetry} />
+                  <Toggle label="Tablet Mode" value={tabletMode} onChange={setTabletMode} desc="Enable pen pressure sensitivity" />
+                  <Toggle label="Mirror Mode" value={symmetry} onChange={setSymmetry} />
+                  <Toggle label="Guide Rings (G)" value={showGuides} onChange={setShowGuides} />
+                  <Toggle label="Show Grid" value={showGrid} onChange={setShowGrid} />
+                  <Toggle label="Snap to Grid" value={snapToGrid} onChange={setSnapToGrid} />
+                  {snapToGrid && <Slider label="Grid Spacing" value={gridSizeMm} min={1} max={50} step={1} unit="mm" allowText={true} onChange={setGridSizeMm} />}
+                  <Toggle label="Bolt Pattern" value={showBolts} onChange={setShowBolts} />
+                  <Toggle label="Active Wedge (W)" value={showWedge} onChange={setShowWedge} />
+
+                  <SecHead>Export & Tools</SecHead>
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <button onClick={() => exportFormat('svg')} className="py-2 rounded-xl text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-700 shadow-lg transition-all">SVG</button>
+                    <button disabled className="relative py-2 rounded-xl text-xs font-bold text-slate-400 bg-slate-100 border border-slate-200 cursor-not-allowed group" title="DXF export is currently being refined">
+                      <span className="opacity-30">DXF</span>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-[7px] text-cyan-700 font-black uppercase tracking-tighter bg-cyan-50 px-1 rounded shadow-sm border border-cyan-100">Coming Soon</span>
+                      </div>
+                    </button>
+                    <button onClick={() => exportFormat('png')} className="py-2 rounded-xl text-xs font-bold text-cyan-600 bg-white border border-slate-200 hover:border-cyan-400 transition-all">PNG</button>
+                    <button onClick={() => exportFormat('jpeg')} className="py-2 rounded-xl text-xs font-bold text-cyan-600 bg-white border border-slate-200 hover:border-cyan-400 transition-all">JPEG</button>
+                  </div>
+                  <button onClick={clearCanvas} className="w-full mt-4 mb-8 py-2.5 px-4 rounded-xl text-sm font-bold text-red-500 bg-white border border-red-100 hover:bg-red-50 hover:border-red-200 transition-all">✕ CLEAR CANVAS</button>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* CANVAS */}
-          <div ref={containerRef} className="flex-1 flex items-center justify-center relative" style={{ background: 'var(--bg-main)' }}>
-            <button
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="absolute left-0 top-1/2 -translate-y-1/2 w-5 h-20 bg-white border border-slate-100 border-l-0 rounded-r-xl flex items-center justify-center text-slate-400 hover:text-cyan-600 hover:shadow-lg transition-all z-50 cursor-pointer"
-            >
-              <span className="text-[10px]">{isSidebarOpen ? '◀' : '▶'}</span>
-            </button>
-            <svg
-              ref={svgRef} width="100%" height="100%" viewBox={`${-dimensions.w / 2} ${-dimensions.h / 2} ${dimensions.w} ${dimensions.h}`}
-              style={{ display: 'block', touchAction: 'none' }} className="canvas-cursor select-none"
-              onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={(e) => { setCursorPt(null); onMouseUp(e); }}
-              onTouchStart={onMouseDown} onTouchMove={onMouseMove} onTouchEnd={onMouseUp} onTouchCancel={onMouseUp}
-            >
-              <Defs />
+            {/* CANVAS */}
+            <div ref={containerRef} className="flex-1 flex items-center justify-center relative" style={{ background: 'var(--bg-main)' }}>
+              <button
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className="absolute left-0 top-1/2 -translate-y-1/2 w-5 h-20 bg-white border border-slate-100 border-l-0 rounded-r-xl flex items-center justify-center text-slate-400 hover:text-cyan-600 hover:shadow-lg transition-all z-50 cursor-pointer"
+              >
+                <span className="text-[10px]">{isSidebarOpen ? '◀' : '▶'}</span>
+              </button>
+              <svg
+                ref={svgRef} width="100%" height="100%" viewBox={`${-dimensions.w / 2} ${-dimensions.h / 2} ${dimensions.w} ${dimensions.h}`}
+                style={{ display: 'block', touchAction: 'none' }} className="canvas-cursor select-none"
+                onPointerDown={onMouseDown} onPointerMove={onMouseMove} onPointerUp={onMouseUp}
+                onPointerLeave={(e) => { setCursorPt(null); onMouseUp(e); }}
+                onPointerCancel={onMouseUp}
+              >
+                <Defs />
 
-              <g id="main-group" transform={`scale(${camera.zoom}) translate(${camera.x}, ${camera.y}) rotate(-90)`}>
+                <g id="main-group" transform={`scale(${camera.zoom}) translate(${camera.x}, ${camera.y}) rotate(-90)`}>
 
-                <circle cx="0" cy="0" r={outerR + 30} fill="url(#bgG)" className="bg-element" />
+                  <circle cx="0" cy="0" r={outerR + 30} fill="url(#bgG)" className="bg-element" />
 
-                <circle cx="0" cy="0" r={outerR} fill="none" stroke="#cbd5e1" strokeWidth="10" />
-                <circle cx="0" cy="0" r={outerR - 4} fill="none" stroke="#00818a" strokeWidth="0.8" opacity="0.25" />
+                  <circle cx="0" cy="0" r={outerR} fill="none" stroke="#cbd5e1" strokeWidth="10" />
+                  <circle cx="0" cy="0" r={outerR - 4} fill="none" stroke="#00818a" strokeWidth="0.8" opacity="0.25" />
 
-                {showGuides && <g className="ui-element">
-                  <circle cx="0" cy="0" r={outerR * 0.88} fill="none" stroke="#00818a" strokeWidth="0.6" strokeDasharray="4,6" opacity="0.15" />
-                  <circle cx="0" cy="0" r={outerR * 0.65} fill="none" stroke="#00818a" strokeWidth="0.6" strokeDasharray="4,6" opacity="0.15" />
-                  <circle cx="0" cy="0" r={innerR} fill="none" stroke="#00818a" strokeWidth="0.6" strokeDasharray="3,5" opacity="0.15" />
-                </g>}
+                  {showGuides && <g className="ui-element">
+                    <circle cx="0" cy="0" r={outerR * 0.88} fill="none" stroke="#00818a" strokeWidth="0.6" strokeDasharray="4,6" opacity="0.15" />
+                    <circle cx="0" cy="0" r={outerR * 0.65} fill="none" stroke="#00818a" strokeWidth="0.6" strokeDasharray="4,6" opacity="0.15" />
+                    <circle cx="0" cy="0" r={innerR} fill="none" stroke="#00818a" strokeWidth="0.6" strokeDasharray="3,5" opacity="0.15" />
+                  </g>}
 
-                {showGrid && (() => {
-                  const spacing = gridSizeMm * mmToPx;
-                  const maxExtent = outerR * 1.5;
-                  const steps = Math.ceil(maxExtent / spacing);
-                  const lines = [];
-                  for (let i = -steps; i <= steps; i++) {
-                    const p = i * spacing;
-                    lines.push(<line key={`v${i}`} x1={p} y1={-maxExtent} x2={p} y2={maxExtent} stroke="#00818a" strokeWidth={0.5 / camera.zoom} opacity={i === 0 ? 0.2 : 0.05} />);
-                    lines.push(<line key={`h${i}`} x1={-maxExtent} y1={p} x2={maxExtent} y2={p} stroke="#00818a" strokeWidth={0.5 / camera.zoom} opacity={i === 0 ? 0.2 : 0.05} />);
-                  }
-                  return <g className="ui-element">{lines}</g>;
-                })()}
+                  {showGrid && (() => {
+                    const spacing = gridSizeMm * mmToPx;
+                    const maxExtent = outerR * 1.5;
+                    const steps = Math.ceil(maxExtent / spacing);
+                    const lines = [];
+                    for (let i = -steps; i <= steps; i++) {
+                      const p = i * spacing;
+                      lines.push(<line key={`v${i}`} x1={p} y1={-maxExtent} x2={p} y2={maxExtent} stroke="#00818a" strokeWidth={0.5 / camera.zoom} opacity={i === 0 ? 0.2 : 0.05} />);
+                      lines.push(<line key={`h${i}`} x1={-maxExtent} y1={p} x2={maxExtent} y2={p} stroke="#00818a" strokeWidth={0.5 / camera.zoom} opacity={i === 0 ? 0.2 : 0.05} />);
+                    }
+                    return <g className="ui-element">{lines}</g>;
+                  })()}
 
-                <g className="ui-element">
-                  {Array.from({ length: spokeCount }).map((_, i) => {
-                    const a = (360 / spokeCount) * i * Math.PI / 180;
-                    return <line key={i} x1="0" y1="0" x2={outerR * Math.cos(a)} y2={outerR * Math.sin(a)} stroke="#cbd5e1" strokeWidth="0.8" opacity="0.5" />;
-                  })}
-                </g>
-
-                {showWedge && <path className="ui-element" d={wedgePath} fill="#00818a" fillOpacity="0.03" stroke="#00818a" strokeWidth="0.6" strokeOpacity="0.2" />}
-                {(symmetry || snapToMirror) && showWedge && <line className="ui-element" x1="0" y1="0" x2={outerR} y2="0" stroke="#00818a" strokeWidth="0.7" strokeDasharray="4,4" opacity={snapToMirror ? 0.4 : 0.2} />}
-
-                <RadialStrokes strokes={allStrokes} spokeCount={spokeCount} radialSymmetry={radialSymmetry} color="#00818a" width={spokeThick} symmetry={symmetry} wedgeDeg={wedgeDeg}
-                  activeTool={activeTool} selectedId={selectedId} onShapeClick={handleShapeClick} designShear={designShear} outerR={outerR} />
-
-                {selectionBox && activeTool === 'select' && (
-                  <rect className="ui-element"
-                    x={Math.min(selectionBox.start.x, selectionBox.end.x)}
-                    y={Math.min(selectionBox.start.y, selectionBox.end.y)}
-                    width={Math.abs(selectionBox.start.x - selectionBox.end.x)}
-                    height={Math.abs(selectionBox.start.y - selectionBox.end.y)}
-                    fill="rgba(0, 129, 138, 0.08)" stroke="#00818a" strokeWidth="1" strokeDasharray="4,4"
-                  />
-                )}
-
-                {activeTool === 'select' && selectedStroke && selectedStroke.type === 'shape' && (
-                  <g className="ui-element" transform={`translate(${selectedStroke.cx}, ${selectedStroke.cy}) rotate(${selectedStroke.angle})`}>
-                    <rect x={-selectedStroke.w / 2} y={-selectedStroke.h / 2} width={selectedStroke.w} height={selectedStroke.h} fill="none" stroke="#00818a" strokeDasharray="4,4" opacity="0.5" />
-                    <circle cx={-selectedStroke.w / 2} cy={-selectedStroke.h / 2} r={6 / camera.zoom} fill="#fff" stroke="#00818a" strokeWidth="1" cursor="nwse-resize" onMouseDown={(e) => startDrag(e, 'resize')} />
-                    <circle cx={selectedStroke.w / 2} cy={-selectedStroke.h / 2} r={6 / camera.zoom} fill="#fff" stroke="#00818a" strokeWidth="1" cursor="nesw-resize" onMouseDown={(e) => startDrag(e, 'resize')} />
-                    <circle cx={selectedStroke.w / 2} cy={selectedStroke.h / 2} r={6 / camera.zoom} fill="#fff" stroke="#00818a" strokeWidth="1" cursor="nwse-resize" onMouseDown={(e) => startDrag(e, 'resize')} />
-                    <circle cx={-selectedStroke.w / 2} cy={selectedStroke.h / 2} r={6 / camera.zoom} fill="#fff" stroke="#00818a" strokeWidth="1" cursor="nesw-resize" onMouseDown={(e) => startDrag(e, 'resize')} />
-                    <line x1={0} y1={-selectedStroke.h / 2} x2={0} y2={-selectedStroke.h / 2 - 25 / camera.zoom} stroke="#00818a" opacity="0.5" />
-                    <circle cx={0} cy={-selectedStroke.h / 2 - 25 / camera.zoom} r={6 / camera.zoom} fill="#ff4d4d" cursor="ew-resize" onMouseDown={(e) => startDrag(e, 'rotate')} />
-                    <circle cx={0} cy={0} r={8 / camera.zoom} fill="#00818a" cursor="move" onMouseDown={(e) => startDrag(e, 'move')} />
-                  </g>
-                )}
-
-                {activeTool === 'select' && selectedStroke && (selectedStroke.type === 'line' || selectedStroke.type === 'arc' || selectedStroke.type === 'freehand') && (
                   <g className="ui-element">
-                    {selectedStroke.pts?.map((pt, i) => (
-                      <circle key={i} cx={pt.x} cy={pt.y} r={5 / camera.zoom} fill="#fff" stroke={i === 0 ? "#10b981" : i === selectedStroke.pts.length - 1 ? "#ef4444" : "#00818a"} strokeWidth="1.5" cursor="move" onMouseDown={(e) => startDrag(e, `pt_${i}`)} />
-                    ))}
-                    {selectedStroke.pts?.length > 0 && <circle cx={selectedStroke.cx || selectedStroke.pts[0].x} cy={selectedStroke.cy || selectedStroke.pts[0].y} r={8 / camera.zoom} fill="#fbbf24" cursor="move" onMouseDown={(e) => startDrag(e, 'move')} />}
+                    {Array.from({ length: spokeCount }).map((_, i) => {
+                      const a = (360 / spokeCount) * i * Math.PI / 180;
+                      return <line key={i} x1="0" y1="0" x2={outerR * Math.cos(a)} y2={outerR * Math.sin(a)} stroke="#cbd5e1" strokeWidth="0.8" opacity="0.5" />;
+                    })}
                   </g>
-                )}
 
-                {activeTool === 'eraser' && cursorPt && (
-                  <circle className="ui-element" cx={cursorPt.x} cy={cursorPt.y} r={eraserSize} fill="none" stroke="#ef4444" strokeWidth={1.5 / camera.zoom} opacity="0.8" pointerEvents="none" />
-                )}
+                  {showWedge && <path className="ui-element" d={wedgePath} fill="#00818a" fillOpacity="0.03" stroke="#00818a" strokeWidth="0.6" strokeOpacity="0.2" />}
+                  {(symmetry || snapToMirror) && showWedge && <line className="ui-element" x1="0" y1="0" x2={outerR} y2="0" stroke="#00818a" strokeWidth="0.7" strokeDasharray="4,4" opacity={snapToMirror ? 0.4 : 0.2} />}
 
-                <circle cx="0" cy="0" r={innerR + 6} fill="#fff" stroke="#cbd5e1" strokeWidth="1.5" />
-                <circle cx="0" cy="0" r={innerR} fill="url(#rimG)" stroke="#00818a" strokeWidth="1" opacity="0.4" />
+                  <RadialStrokes strokes={allStrokes} spokeCount={spokeCount} radialSymmetry={radialSymmetry} color="#00818a" width={spokeThick} symmetry={symmetry} wedgeDeg={wedgeDeg}
+                    activeTool={activeTool} selectedId={selectedId} onShapeClick={handleShapeClick} designShear={designShear} outerR={outerR} tabletMode={tabletMode} />
 
-                {showBolts && !isCenterLock && <BoltPattern radiusPx={pcdRadPx} lugCount={lugCount} lugPx={lugPx} />}
-                {showBolts && isCenterLock && <CenterLock innerR={innerR} />}
+                  {selectionBox && activeTool === 'select' && (
+                    <rect className="ui-element"
+                      x={Math.min(selectionBox.start.x, selectionBox.end.x)}
+                      y={Math.min(selectionBox.start.y, selectionBox.end.y)}
+                      width={Math.abs(selectionBox.start.x - selectionBox.end.x)}
+                      height={Math.abs(selectionBox.start.y - selectionBox.end.y)}
+                      fill="rgba(0, 129, 138, 0.08)" stroke="#00818a" strokeWidth="1" strokeDasharray="4,4"
+                    />
+                  )}
 
-                {showBolts && !isCenterLock && <circle className="ui-element" cx="0" cy="0" r={pcdRadPx} fill="none" stroke="#00818a" strokeWidth="0.4" strokeDasharray="2,5" opacity="0.15" />}
+                  {activeTool === 'select' && selectedStroke && selectedStroke.type === 'shape' && (
+                    <g className="ui-element" transform={`translate(${selectedStroke.cx}, ${selectedStroke.cy}) rotate(${selectedStroke.angle})`}>
+                      <rect x={-selectedStroke.w / 2} y={-selectedStroke.h / 2} width={selectedStroke.w} height={selectedStroke.h} fill="none" stroke="#00818a" strokeDasharray="4,4" opacity="0.5" />
+                      <circle cx={-selectedStroke.w / 2} cy={-selectedStroke.h / 2} r={6 / camera.zoom} fill="#fff" stroke="#00818a" strokeWidth="1" cursor="nwse-resize" onMouseDown={(e) => startDrag(e, 'resize')} />
+                      <circle cx={selectedStroke.w / 2} cy={-selectedStroke.h / 2} r={6 / camera.zoom} fill="#fff" stroke="#00818a" strokeWidth="1" cursor="nesw-resize" onMouseDown={(e) => startDrag(e, 'resize')} />
+                      <circle cx={selectedStroke.w / 2} cy={selectedStroke.h / 2} r={6 / camera.zoom} fill="#fff" stroke="#00818a" strokeWidth="1" cursor="nwse-resize" onMouseDown={(e) => startDrag(e, 'resize')} />
+                      <circle cx={-selectedStroke.w / 2} cy={selectedStroke.h / 2} r={6 / camera.zoom} fill="#fff" stroke="#00818a" strokeWidth="1" cursor="nesw-resize" onMouseDown={(e) => startDrag(e, 'resize')} />
+                      <line x1={0} y1={-selectedStroke.h / 2} x2={0} y2={-selectedStroke.h / 2 - 25 / camera.zoom} stroke="#00818a" opacity="0.5" />
+                      <circle cx={0} cy={-selectedStroke.h / 2 - 25 / camera.zoom} r={6 / camera.zoom} fill="#ff4d4d" cursor="ew-resize" onMouseDown={(e) => startDrag(e, 'rotate')} />
+                      <circle cx={0} cy={0} r={8 / camera.zoom} fill="#00818a" cursor="move" onMouseDown={(e) => startDrag(e, 'move')} />
+                    </g>
+                  )}
 
-                <circle cx="0" cy="0" r={capPx} fill="#f8fafc" stroke="#e2e8f0" strokeWidth="2" />
-                <circle cx="0" cy="0" r={capPx * 0.58} fill="#fff" stroke="#00818a" strokeWidth="0.5" opacity="0.3" />
-                <circle cx="0" cy="0" r={capPx * 0.2} fill="#00818a" opacity="0.3" />
-              </g>
-            </svg>
+                  {activeTool === 'select' && selectedStroke && (selectedStroke.type === 'line' || selectedStroke.type === 'arc' || selectedStroke.type === 'freehand') && (
+                    <g className="ui-element">
+                      {selectedStroke.pts?.map((pt, i) => (
+                        <circle key={i} cx={pt.x} cy={pt.y} r={5 / camera.zoom} fill="#fff" stroke={i === 0 ? "#10b981" : i === selectedStroke.pts.length - 1 ? "#ef4444" : "#00818a"} strokeWidth="1.5" cursor="move" onMouseDown={(e) => startDrag(e, `pt_${i}`)} />
+                      ))}
+                      {selectedStroke.pts?.length > 0 && <circle cx={selectedStroke.cx || selectedStroke.pts[0].x} cy={selectedStroke.cy || selectedStroke.pts[0].y} r={8 / camera.zoom} fill="#fbbf24" cursor="move" onMouseDown={(e) => startDrag(e, 'move')} />}
+                    </g>
+                  )}
 
-            <div className="absolute top-6 right-6 flex flex-col gap-3 z-50">
-              <button onClick={resetCamera} className="p-3 bg-white/80 backdrop-blur-md rounded-2xl text-slate-500 hover:text-cyan-600 border border-slate-100 transition-all shadow-sm hover:shadow-lg flex gap-2 items-center text-[10px] font-bold uppercase tracking-widest" title="Reset Camera (R)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
-                <span className="hidden sm:inline">Recenter</span>
-              </button>
-              <button onClick={toggleFullscreen} className="p-3 bg-white/80 backdrop-blur-md rounded-2xl text-slate-500 hover:text-cyan-600 border border-slate-100 transition-all shadow-sm hover:shadow-lg flex gap-2 items-center text-[10px] font-bold uppercase tracking-widest" title="Fullscreen (F)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
-                <span className="hidden sm:inline">Fullscreen</span>
-              </button>
+                  {activeTool === 'eraser' && cursorPt && (
+                    <circle className="ui-element" cx={cursorPt.x} cy={cursorPt.y} r={eraserSize} fill="none" stroke="#ef4444" strokeWidth={1.5 / camera.zoom} opacity="0.8" pointerEvents="none" />
+                  )}
+
+                  <circle cx="0" cy="0" r={innerR + 6} fill="#fff" stroke="#cbd5e1" strokeWidth="1.5" />
+                  <circle cx="0" cy="0" r={innerR} fill="url(#rimG)" stroke="#00818a" strokeWidth="1" opacity="0.4" />
+
+                  {showBolts && !isCenterLock && <BoltPattern radiusPx={pcdRadPx} lugCount={lugCount} lugPx={lugPx} />}
+                  {showBolts && isCenterLock && <CenterLock innerR={innerR} />}
+
+                  {showBolts && !isCenterLock && <circle className="ui-element" cx="0" cy="0" r={pcdRadPx} fill="none" stroke="#00818a" strokeWidth="0.4" strokeDasharray="2,5" opacity="0.15" />}
+
+                  <circle cx="0" cy="0" r={capPx} fill="#f8fafc" stroke="#e2e8f0" strokeWidth="2" />
+                  <circle cx="0" cy="0" r={capPx * 0.58} fill="#fff" stroke="#00818a" strokeWidth="0.5" opacity="0.3" />
+                  <circle cx="0" cy="0" r={capPx * 0.2} fill="#00818a" opacity="0.3" />
+                </g>
+              </svg>
+
+              <div className="absolute top-6 right-6 flex flex-col gap-3 z-50">
+                <button onClick={resetCamera} className="p-3 bg-white/80 backdrop-blur-md rounded-2xl text-slate-500 hover:text-cyan-600 border border-slate-100 transition-all shadow-sm hover:shadow-lg flex gap-2 items-center text-[10px] font-bold uppercase tracking-widest" title="Reset Camera (R)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                  <span className="hidden sm:inline">Recenter</span>
+                </button>
+                <button onClick={toggleFullscreen} className="p-3 bg-white/80 backdrop-blur-md rounded-2xl text-slate-500 hover:text-cyan-600 border border-slate-100 transition-all shadow-sm hover:shadow-lg flex gap-2 items-center text-[10px] font-bold uppercase tracking-widest" title="Fullscreen (F)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+                  <span className="hidden sm:inline">Fullscreen</span>
+                </button>
+              </div>
+
             </div>
-
           </div>
-        </div>
-      );
+          );
     }
 
-    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+          ReactDOM.createRoot(document.getElementById('root')).render(<App />);
   </script>
 </body>
 
