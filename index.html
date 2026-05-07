@@ -1057,6 +1057,7 @@
         if (e.pointerType === 'pen' && !tabletMode) setTabletMode(true);
         if (e.type.startsWith('mouse') && e.button !== 0 && e.button !== 1) return;
 
+        // Middle click or multi-touch pan
         if (e.button === 1 || (e.pointerType === 'touch' && e.isPrimary === false)) {
           e.preventDefault();
           const cx = e.touches ? (e.touches[0].clientX + e.touches[1].clientX) / 2 : e.clientX;
@@ -1094,6 +1095,7 @@
             setCurrentStroke({ id: Date.now(), type: activeTool, pts: [c, c], cx: c.x, cy: c.y, symmetry, spokeCount, radialSymmetry });
           } else {
             setCurrentStroke(prev => {
+              if (!prev) return null;
               const newPts = [...prev.pts, c];
               return { ...prev, pts: newPts, cx: newPts.reduce((a, b) => a + b.x, 0) / newPts.length, cy: newPts.reduce((a, b) => a + b.y, 0) / newPts.length };
             });
@@ -1102,46 +1104,121 @@
         }
 
         setDrawing(true);
+        if (activeTool === 'freehand') {
+          const pressure = e.pressure || 0.5;
+          setCurrentStroke({ id: Date.now(), type: 'freehand', pts: [{ ...c, p: pressure }], symmetry, spokeCount, radialSymmetry });
+        } else {
+          setShapeStart(c);
+          setCurrentStroke({ id: Date.now(), type: 'shape', shapeType: activeTool, cx: c.x, cy: c.y, w: 0, h: 0, angle: 0, r: cornerRadius, sides: polygonSides, symmetry, spokeCount, radialSymmetry });
+        }
+      }, [drawing, svgPoint, processPoint, activeTool, strokes, symmetry, spokeCount, radialSymmetry, cornerRadius, polygonSides, tabletMode, camera, applyEraser]);
+
+      const onMouseMove = useCallback((e) => {
+        const pt = svgPoint(e); if (!pt) return;
+        setCursorPt(pt);
+
+        if (panState) {
+          const cx = e.touches ? (e.touches[0].clientX + e.touches[1].clientX) / 2 : e.clientX;
+          const cy = e.touches ? (e.touches[0].clientY + e.touches[1].clientY) / 2 : e.clientY;
+          if (e.touches && e.touches.length === 2 && panState.initialDist > 0) {
+            const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            const zoomFactor = dist / panState.initialDist;
+            setCamera(prev => ({ ...prev, zoom: Math.min(Math.max(0.05, panState.startZoom * zoomFactor), 50) }));
+          } else {
+            const dx = (cx - panState.startX) / camera.zoom;
+            const dy = (cy - panState.startY) / camera.zoom;
+            setCamera(prev => ({ ...prev, x: panState.startCamX + dx, y: panState.startCamY + dy }));
+          }
+          return;
+        }
+
+        if (dragState) {
+          const { action, startId } = dragState;
+          const step = [...history[historyStep]];
+          const idx = step.findIndex(s => s.id === startId);
+          if (idx === -1) return;
+          const s = step[idx];
+          if (action === 'move') {
+            const dx = pt.x - (s.cx || 0), dy = pt.y - (s.cy || 0);
+            if (s.pts) {
+              step[idx] = { ...s, pts: s.pts.map(p => ({ ...p, x: p.x + dx, y: p.y + dy })), cx: pt.x, cy: pt.y };
+            } else {
+              step[idx] = { ...s, cx: pt.x, cy: pt.y };
+            }
+          } else if (action === 'rotate') {
+            const angle = Math.atan2(pt.y - s.cy, pt.x - s.cx) * 180 / Math.PI + 90;
+            step[idx] = { ...s, angle };
+          } else if (action === 'resize') {
+            const local = rotatePt({ x: pt.x - s.cx, y: pt.y - s.cy }, -s.angle);
+            step[idx] = { ...s, w: Math.abs(local.x) * 2, h: Math.abs(local.y) * 2 };
+          } else if (action.startsWith('pt_')) {
+            const ptIdx = parseInt(action.split('_')[1]);
+            const newPts = [...s.pts];
+            newPts[ptIdx] = { ...newPts[ptIdx], x: pt.x, y: pt.y };
+            step[idx] = { ...s, pts: newPts, cx: newPts.reduce((a, b) => a + b.x, 0) / newPts.length, cy: newPts.reduce((a, b) => a + b.y, 0) / newPts.length };
+          }
+          const newHistory = [...history]; newHistory[historyStep] = step; setHistory(newHistory);
+          return;
+        }
+
+        if (!drawing) return;
+
+        if (activeTool === 'eraser') {
+          applyEraser(pt);
+          return;
+        }
+
+        if ((activeTool === 'select' || activeTool === 'fill') && selectionBox) {
+          setSelectionBox(prev => ({ ...prev, end: pt }));
+          return;
+        }
+
+        const isNodeTool = activeTool === 'line' || activeTool === 'arc';
+        const c = processPoint(pt, isNodeTool);
+
+        if (isNodeTool) {
+          setCurrentStroke(prev => {
+            if (!prev) return null;
+            const newPts = [...prev.pts];
+            newPts[newPts.length - 1] = c;
+            return { ...prev, pts: newPts };
+          });
+          return;
+        }
 
         if (activeTool === 'freehand') {
           setCurrentStroke(prev => {
+            if (!prev) return null;
             const last = prev.pts[prev.pts.length - 1];
             const pressure = e.pressure || 0.5;
-
-            // Exponential smoothing for coordinate and pressure jitter
-            const weight = 0.45; // Balance between smoothness and responsiveness
+            const weight = 0.45;
             let smoothedPt = { ...c, p: pressure };
             if (last) {
               smoothedPt.x = last.x + (c.x - last.x) * weight;
               smoothedPt.y = last.y + (c.y - last.y) * weight;
               smoothedPt.p = last.p + (pressure - last.p) * weight;
             }
-
-            if (last && Math.hypot(smoothedPt.x - last.x, smoothedPt.y - last.y) < 0.8) return prev;
+            if (last && Math.hypot(smoothedPt.x - last.x, smoothedPt.y - last.y) < 0.5) return prev;
             return { ...prev, pts: [...prev.pts, smoothedPt] };
           });
         } else {
-
-
           setCurrentStroke(prev => {
+            if (!prev || !shapeStart) return prev;
             let cx = (shapeStart.x + c.x) / 2, cy = (shapeStart.y + c.y) / 2;
             let w = Math.abs(shapeStart.x - c.x), h = Math.abs(shapeStart.y - c.y);
             let angle = prev.angle || 0;
-
             if (snapToMirror) {
               cy = 0;
               h = Math.max(Math.abs(shapeStart.y), Math.abs(c.y)) * 2;
             }
-
             angle = Math.atan2(cy, cx) * 180 / Math.PI;
             const localHalf = rotatePt({ x: c.x - cx, y: c.y - cy }, -angle);
             w = Math.abs(localHalf.x) * 2;
             h = Math.abs(localHalf.y) * 2;
-
             return { ...prev, cx, cy, w, h, angle };
           });
         }
-      }, [drawing, svgPoint, clampWedge, activeTool, shapeStart, snapToMirror, dragState, history, historyStep, selectionBox, panState, applyEraser]);
+      }, [drawing, activeTool, svgPoint, processPoint, shapeStart, snapToMirror, panState, camera, dragState, history, historyStep, selectionBox, applyEraser]);
 
       const onMouseUp = useCallback(() => {
         if (panState) { setPanState(null); return; }
