@@ -96,6 +96,8 @@
 
     input[type=number] {
       -moz-appearance: textfield;
+      appearance: textfield;
+
       background: #fff;
       border: 1px solid var(--border);
       border-radius: 6px;
@@ -500,6 +502,8 @@
       );
     }
 
+
+
     const BOLT_SIZES = {
       'M6': 6, 'M7': 7, 'M8': 8, 'M10': 10, 'M12': 12,
       '1/4"': 6.35, '5/16"': 7.94, '3/8"': 9.53
@@ -622,6 +626,8 @@
         </div>
       );
     }
+
+
 
     const TOOLS = [
       { id: 'select', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /><path d="m13 13 6 6" /></svg>, label: 'Select' },
@@ -979,6 +985,8 @@
         }
       }, [activeTool, history, historyStep, fillColor, commitStroke]);
 
+
+
       const applyEraser = useCallback((pt) => {
         setErasedStrokes(prev => {
           const strokesToErase = prev || strokes;
@@ -1096,98 +1104,6 @@
         setDrawing(true);
 
         if (activeTool === 'freehand') {
-          setCurrentStroke({ id: Date.now(), type: 'freehand', pts: [{ ...c, p: e.pressure || 0.5 }], symmetry, spokeCount, radialSymmetry });
-        } else {
-          setShapeStart(c);
-          setCurrentStroke({ id: Date.now(), type: 'shape', shapeType: activeTool, cx: c.x, cy: c.y, w: 0, h: 0, angle: 0, r: cornerRadius, sides: activeTool === 'polygon' ? polygonSides : 0, symmetry, spokeCount, radialSymmetry });
-        }
-      }, [svgPoint, clampWedge, activeTool, cornerRadius, drawing, camera, strokes, applyEraser, spokeCount, radialSymmetry, symmetry]);
-
-      const onMouseMove = useCallback((e) => {
-        if (panState) {
-          e.preventDefault();
-          const cx = e.touches ? (e.touches.length === 2 ? (e.touches[0].clientX + e.touches[1].clientX) / 2 : e.touches[0].clientX) : e.clientX;
-          const cy = e.touches ? (e.touches.length === 2 ? (e.touches[0].clientY + e.touches[1].clientY) / 2 : e.touches[0].clientY) : e.clientY;
-
-          const dx = (cx - panState.startX) / panState.startZoom;
-          const dy = (cy - panState.startY) / panState.startZoom;
-
-          let newZoom = panState.startZoom;
-          if (e.touches && e.touches.length === 2 && panState.initialDist > 0) {
-            const currentDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-            newZoom = panState.startZoom * (currentDist / panState.initialDist);
-          }
-
-          setCamera({ x: panState.startCamX + dx, y: panState.startCamY + dy, zoom: newZoom });
-          return;
-        }
-
-        const pt = svgPoint(e); if (!pt) return;
-        setCursorPt(pt);
-
-        if (activeTool === 'eraser' && drawing) {
-          applyEraser(pt);
-          return;
-        }
-
-        if ((activeTool === 'select' || activeTool === 'fill') && selectionBox) {
-          setSelectionBox({ ...selectionBox, end: pt });
-          return;
-        }
-
-        if (dragState) {
-          const step = [...history[historyStep]];
-          const idx = step.findIndex(s => s.id === dragState.startId);
-          if (idx === -1) return;
-          const stroke = { ...step[idx] };
-
-          if (dragState.action.startsWith('pt_')) {
-            const i = parseInt(dragState.action.split('_')[1]);
-            const c = processPoint(pt, true);
-            if (c) {
-              const newPts = [...stroke.pts];
-              newPts[i] = c;
-              stroke.pts = newPts;
-              stroke.cx = newPts.reduce((sum, p) => sum + p.x, 0) / newPts.length;
-              stroke.cy = newPts.reduce((sum, p) => sum + p.y, 0) / newPts.length;
-            }
-          } else if (dragState.action === 'move') {
-            const dx = pt.x - stroke.cx, dy = pt.y - stroke.cy;
-            if (stroke.type === 'line' || stroke.type === 'arc' || stroke.type === 'freehand') {
-              stroke.pts = stroke.pts.map(p => ({ x: p.x + dx, y: p.y + dy }));
-              stroke.cx = pt.x; stroke.cy = pt.y;
-            } else {
-              stroke.cx = pt.x; stroke.cy = pt.y;
-            }
-          } else if (dragState.action === 'resize') {
-            const local = rotatePt({ x: pt.x - stroke.cx, y: pt.y - stroke.cy }, -stroke.angle);
-            stroke.w = Math.max(5, Math.abs(local.x) * 2);
-            stroke.h = Math.max(5, Math.abs(local.y) * 2);
-          } else if (dragState.action === 'rotate') {
-            stroke.angle = Math.atan2(pt.y - stroke.cy, pt.x - stroke.cx) * 180 / Math.PI + 90;
-          }
-
-          step[idx] = stroke;
-          const newHistory = [...history];
-          newHistory[historyStep] = step;
-          setHistory(newHistory);
-          return;
-        }
-
-        if (!drawing) return;
-        const isNodeTool = activeTool === 'line' || activeTool === 'arc';
-        const c = processPoint(pt, isNodeTool); if (!c) return;
-
-        if (isNodeTool) {
-          setCurrentStroke(prev => {
-            const newPts = [...prev.pts];
-            newPts[newPts.length - 1] = c;
-            return { ...prev, pts: newPts, cx: newPts.reduce((a, b) => a + b.x, 0) / newPts.length, cy: newPts.reduce((a, b) => a + b.y, 0) / newPts.length };
-          });
-          return;
-        }
-
-        if (activeTool === 'freehand') {
           setCurrentStroke(prev => {
             const last = prev.pts[prev.pts.length - 1];
             const pressure = e.pressure || 0.5;
@@ -1205,6 +1121,8 @@
             return { ...prev, pts: [...prev.pts, smoothedPt] };
           });
         } else {
+
+
           setCurrentStroke(prev => {
             let cx = (shapeStart.x + c.x) / 2, cy = (shapeStart.y + c.y) / 2;
             let w = Math.abs(shapeStart.x - c.x), h = Math.abs(shapeStart.y - c.y);
@@ -1504,6 +1422,8 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg> RANDOMIZE GEOMETRY (?)
                   </button>
 
+
+
                   <SecHead>Parameters</SecHead>
                   <Slider label="Wheel Diameter" value={wheelDiam} min={13} max={24} step={0.5} unit="in" allowText={true} onChange={setWheelDiam} />
                   <DiscreteSlider label="PCD" value={pcd} options={PCD_OPTIONS} unit="mm" onChange={setPcd} />
@@ -1527,7 +1447,7 @@
                             {Object.keys(BOLT_SIZES).map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
                         </div>
-                        {bcdBolts === 0 && <div className="text-[10px] text-slate-400 italic">Set BCD Bolts > 0 to enable multi-piece options.</div>}
+                        {bcdBolts === 0 && <div className="text-[10px] text-slate-400 italic">Set BCD Bolts &gt; 0 to enable multi-piece options.</div>}
                       </div>
                     )}
                   </div>
@@ -1599,12 +1519,15 @@
                       const steps = Math.ceil(maxExtent / spacing);
                       const lines = [];
                       for (let i = -steps; i <= steps; i++) {
-                        const p = i * spacing;
-                        lines.push(<line key={`v${i}`} x1={p} y1={-maxExtent} x2={p} y2={maxExtent} stroke="#00818a" strokeWidth={0.5 / (camera.zoom * mmToPx)} opacity={i === 0 ? 0.2 : 0.05} />);
-                        lines.push(<line key={`h${i}`} x1={-maxExtent} y1={p} x2={maxExtent} y2={p} stroke="#00818a" strokeWidth={0.5 / (camera.zoom * mmToPx)} opacity={i === 0 ? 0.2 : 0.05} />);
+                        const d = i * spacing;
+                        lines.push(<line key={`h${i}`} x1={-maxExtent} y1={d} x2={maxExtent} y2={d} stroke="#00818a" strokeWidth={0.3 / mmToPx} opacity={i % 5 === 0 ? 0.15 : 0.05} />);
+                        lines.push(<line key={`v${i}`} x1={d} y1={-maxExtent} x2={d} y2={maxExtent} stroke="#00818a" strokeWidth={0.3 / mmToPx} opacity={i % 5 === 0 ? 0.15 : 0.05} />);
                       }
                       return <g className="ui-element">{lines}</g>;
                     })()}
+
+                    <RadialStrokes strokes={allStrokes} globalSpokeCount={spokeCount} globalRadialSymmetry={radialSymmetry} color="#1e293b" width={spokeThick} designShear={designShear} outerR={outerR_mm} tabletMode={tabletMode} activeTool={activeTool} selectedId={selectedId} onShapeClick={handleShapeClick} mmToPx={mmToPx} />
+
 
                     {/* Wedge Boundaries (Gray Lines) */}
                     <g className="ui-element">
